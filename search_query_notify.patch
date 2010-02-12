@@ -1,0 +1,359 @@
+diff -r bdc1683a9caf modules/mod_search/mod_search.erl
+--- a/modules/mod_search/mod_search.erl	Fri Feb 12 14:41:23 2010 +0100
++++ b/modules/mod_search/mod_search.erl	Fri Feb 12 17:37:35 2010 +0100
+@@ -38,7 +38,7 @@
+ 
+ -include("zotonic.hrl").
+ 
+--record(state, {context}).
++-record(state, {context, query_watches=[]}).
+ 
+ 
+ observe({search_query, Req, OffsetLimit}, Context) ->
+@@ -67,7 +67,13 @@
+     process_flag(trap_exit, true),
+     {context, Context} = proplists:lookup(context, Args),
+     z_notifier:observe(search_query, {?MODULE, observe}, Context),
+-    {ok, #state{context=z_context:new(Context)}}.
++
++    %% Watch for changes to resources
++    z_notifier:observe(rsc_update_done, self(), Context),
++    z_notifier:observe(rsc_delete, self(), Context),
++
++    Watches = search_query_notify:init(Context),
++    {ok, #state{context=z_acl:sudo(z_context:new(Context)),query_watches=Watches}}.
+ 
+ %% @spec handle_call(Request, From, State) -> {reply, Reply, State} |
+ %%                                      {reply, Reply, State, Timeout} |
+@@ -84,6 +90,45 @@
+ %% @spec handle_cast(Msg, State) -> {noreply, State} |
+ %%                                  {noreply, State, Timeout} |
+ %%                                  {stop, Reason, State}
++%% @doc Casts for updates to resources
++handle_cast({{rsc_update_done, delete, _Id, _, _}, _Ctx}, State) ->
++    {noreply, State};
++handle_cast({{rsc_update_done, _, Id, Cats, Cats}, _Ctx}, State=#state{query_watches=Watches,context=Context}) ->
++    %% Update; categories have not changed.
++    Watches1 = case lists:member('query', Cats) of
++                   false -> Watches;
++                   true -> search_query_notify:watches_update(Id, Watches, Context)
++               end,
++    ?DEBUG(Watches1),
++    %% Item updated; send notifications for matched queries.
++    search_query_notify:send_notifications(Id, search_query_notify:check_rsc(Id, Watches1, Context), Context),
++    {noreply, State#state{query_watches=Watches1}};
++        
++handle_cast({{rsc_update_done, _, Id, CatsOld, CatsNew}, _Ctx}, State=#state{query_watches=Watches,context=Context}) ->
++    %% Update; categories *have* changed.
++    Watches1 = case lists:member('query', CatsOld) of
++                   true ->
++                       case lists:member('query', CatsNew) of
++                           true ->
++                               %% It still is a query; but might have changes; update watches.
++                               search_query_notify:watches_update(Id, Watches, Context);
++                           false ->
++                               %% Its no longer a query; remove from watches.
++                               search_query_notify:watches_remove(Id, Watches, Context)
++                       end;
++                   false ->
++                       case lists:member('query', CatsNew) of
++                           true ->
++                               %% It has become a query
++                               search_query_notify:watches_update(Id, Watches, Context);
++                           false ->
++                               %% It has not been a query
++                               Watches
++                       end
++               end,
++    search_query_notify:send_notifications(Id, search_query_notify:check_rsc(Id, Watches1, Context), Context),
++    {noreply, State#state{query_watches=Watches1}};
++
+ %% @doc Trap unknown casts
+ handle_cast(Message, State) ->
+     {stop, {unknown_cast, Message}, State}.
+@@ -103,7 +148,10 @@
+ %% cleaning up. When it returns, the gen_server terminates with Reason.
+ %% The return value is ignored.
+ terminate(_Reason, State) ->
+-    z_notifier:detach(search_query, {?MODULE, observe}, State#state.context),
++    Context = State#state.context,
++    z_notifier:detach(search_query, {?MODULE, observe}, Context),
++    z_notifier:detach(rsc_update_done, self(), Context),
++    z_notifier:detach(rsc_delete, self(), Context),
+     ok.
+ 
+ %% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
+diff -r bdc1683a9caf modules/mod_search/support/search_query.erl
+--- a/modules/mod_search/support/search_query.erl	Fri Feb 12 14:41:23 2010 +0100
++++ b/modules/mod_search/support/search_query.erl	Fri Feb 12 17:37:35 2010 +0100
+@@ -68,6 +68,7 @@
+ 
+ % Convert request arguments to atom. Doing it this way avoids atom
+ % table overflows.
++request_arg("authoritative")       -> authoritative;
+ request_arg("cat")                 -> cat;
+ request_arg("cat_exclude")         -> cat_exclude;
+ request_arg("custompivot")         -> custompivot;
+@@ -75,13 +76,14 @@
+ request_arg("hasobjectpredicate")  -> hasobjectpredicate;
+ request_arg("hassubject")          -> hassubject;
+ request_arg("hassubjectpredicate") -> hassubjectpredicate;
++request_arg("is_featured")         -> is_featured;
+ request_arg("publication_month")   -> publication_month;
+ request_arg("publication_year")    -> publication_year;
+ request_arg("query_id")            -> query_id;
++request_arg("rsc_id")              -> rsc_id;
+ request_arg("sort")                -> sort;
+ request_arg("text")                -> text;
+ request_arg("upcoming")            -> upcoming;
+-request_arg("authoritative")       -> authoritative;
+ request_arg(Term)                  -> throw({error, {unknown_query_term, Term}}).
+ 
+ 
+@@ -216,6 +218,13 @@
+             throw({error, {invalid_query_id, Id}})
+     end;
+ 
++%% rsc_id=<rsc id>
++%% Filter to *only* include the given rsc id. Can be used for resource existence check.
++parse_query([{rsc_id, Id}|Rest], Context, Result) ->
++    {Arg, Result1} = add_arg(Id, Result),
++     Result2 = add_where("rsc.id = " ++ Arg, Result1),
++     parse_query(Rest, Context, Result2);
++
+ %% sort=fieldname
+ %% Order by a given field. Putting a '-' in front of the field name reverts the ordering.
+ parse_query([{sort, Sort}|Rest], Context, Result) ->
+diff -r bdc1683a9caf modules/mod_search/support/search_query_notify.erl
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/modules/mod_search/support/search_query_notify.erl	Fri Feb 12 17:37:35 2010 +0100
+@@ -0,0 +1,86 @@
++%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
++%% @copyright 2009-2010 Arjan Scherpenisse
++%% @date 2009-04-12
++%% @doc Notifications for 'query' resources when items are added to them.
++
++%%
++%% Licensed under the Apache License, Version 2.0 (the "License");
++%% you may not use this file except in compliance with the License.
++%% You may obtain a copy of the License at
++%%
++%%     http://www.apache.org/licenses/LICENSE-2.0
++%%
++%% Unless required by applicable law or agreed to in writing, software
++%% distributed under the License is distributed on an "AS IS" BASIS,
++%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++%% See the License for the specific language governing permissions and
++%% limitations under the License.
++
++-module(search_query_notify).
++-author("Arjan Scherpenisse <arjan@scherpenisse.net>").
++
++%% interface functions
++-export([
++         init/1,
++         watches_update/3,
++         watches_remove/3,
++         check_rsc/3,
++         send_notifications/3
++]).
++
++-include_lib("zotonic.hrl").
++
++
++%% Get all 'query' types and add them to the watches.
++init(Context) ->
++    case m_category:get_by_name('query', Context) of
++        undefined -> [];
++        _ ->
++            Ids = z_search:query_([{cat, 'query'}], Context),
++            lists:foldr(fun (Id, Acc) -> watches_update(Id, Acc, Context) end, [], Ids)
++    end.
++
++
++watches_update(Id, Watches, Context) ->
++    case m_rsc:p(Id, 'query', Context) of
++        undefined ->
++            proplists:delete(Id, Watches);
++        Q ->
++            Props = search_query:parse_query_text(Q),
++            [{Id, Props} | proplists:delete(Id, Watches)]
++    end.
++
++watches_remove(Id, Watches, _Context) ->
++    proplists:delete(Id, Watches).
++
++%% @doc Check whether the given resource matches to the queries.
++%% @spec check_rsc(Id, Watches, Context) -> [Id] list of matching query resources.
++check_rsc(Id, Watches, Context) ->
++    IsA = m_rsc:p(Id, is_a, Context),
++    Cats   = [ {cat, atom_to_list(A)} || {A,_} <- IsA ],
++    CatsEx = [ {cat_exclude, atom_to_list(A)} || {A,_} <- IsA ],
++    %% Pre-filter the list of queries according to category check
++    W = lists:filter(fun({_, Props}) -> cat_matches(Cats, Props) andalso not(cat_matches(CatsEx, Props)) end, Watches),
++    %% Filter the list by executing the query
++    W2 = lists:filter(fun({QueryId, QueryProps}) -> execute_query(Id, QueryId, QueryProps, Context) end, W),
++    [QueryId || {QueryId, _} <- W].
++
++
++cat_matches([], _Props) -> false;
++cat_matches([Cat|Rest], Props) ->
++    case lists:member(Cat, Props) of
++        true -> true;
++        false -> cat_matches(Rest, Props)
++    end.
++
++send_notifications(_Id, [], _Context) ->
++    ok;
++send_notifications(Id, [QueryId|Rest], Context) ->
++    ?DEBUG("notify!!"),
++    ?DEBUG(QueryId),
++    z_notifier:notify({rsc_query_item, QueryId, Id}, Context),
++    send_notifications(Id, Rest, Context).
++
++execute_query(CheckId, QueryId, QueryProps, Context) ->
++    true.
++
+diff -r bdc1683a9caf modules/mod_search/tests/mod_search_tests.erl
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/modules/mod_search/tests/mod_search_tests.erl	Fri Feb 12 17:37:35 2010 +0100
+@@ -0,0 +1,79 @@
++-module(mod_search_tests).
++
++-include_lib("eunit/include/eunit.hrl").
++-include_lib("zotonic.hrl").
++
++
++wait_for(QueryId, ItemId) ->
++    receive 
++        {{rsc_query_item, QueryId, ItemId}, _} ->
++            ok;
++        _ ->
++            ?assert(false)
++    after 1000 ->
++            ?debugMsg("Did not receive a rsc_query_item."),
++            ?assert(false)
++    end.
++
++
++query_hooks_test() ->
++    C = z_acl:sudo(z_context:new(testsandbox)),
++
++    z_notifier:observe(rsc_query_item, self(), C),
++    
++    %% Create a new query
++    {ok, Query1} = m_rsc:insert([{category, 'query'},
++                                 {title, <<"All featured articles">>},
++                                 {'query', <<"cat=article\nis_featured">>}], C),
++
++    %% Create an item which fits the query
++    {ok, Id} = m_rsc:insert([{category, article},
++                             {is_featured, true},
++                             {title, <<"A test article">>}], C),
++    %% Wait for the notification
++    wait_for(Query1, Id),
++
++    m_rsc:delete(Query1, C),
++    m_rsc:delete(Id, C),
++
++    z_notifier:detach(rsc_query_item, self(), C),
++
++    ok.
++
++
++
++
++
++
++search_query_notify_test() ->
++    C = z_acl:sudo(z_context:new(testsandbox)),
++
++    Q = <<"cat=article\nis_featured">>,
++
++    %% Create a new query
++    {ok, Query1} = m_rsc:insert([{category, 'query'},
++                                 {title, <<"All featured articles">>},
++                                 {'query', Q}], C),
++
++    %% There's exactly one query
++    Watches = search_query_notify:init(C),
++    ?assertEqual([{Query1, search_query:parse_query_text(Q)}], Watches),
++
++    %% Create an item which fits the query
++    {ok, Id} = m_rsc:insert([{category, article},
++                             {is_featured, true},
++                             {title, <<"A test article">>}], C),
++
++    %% It should match
++    ?assertEqual([Query1], search_query_notify:check_rsc(Id, Watches, C)),
++
++    %% Create an item which does not fit the query
++    {ok, Id2} = m_rsc:insert([{category, collection}, {title, <<"A test collection">>}], C),
++    %% It should not match
++    ?assertEqual([], search_query_notify:check_rsc(Id2, Watches, C)),
++
++    m_rsc:delete(Id, C),
++    m_rsc:delete(Id2, C),
++    m_rsc:delete(Query1, C),
++    ok.
++
+diff -r bdc1683a9caf src/support/z_search.erl
+--- a/src/support/z_search.erl	Fri Feb 12 14:41:23 2010 +0100
++++ b/src/support/z_search.erl	Fri Feb 12 17:37:35 2010 +0100
+@@ -27,6 +27,7 @@
+     search_pager/3,
+     search_pager/4,
+     search_result/3,
++    query_/2,
+     pager/3,
+     pager/4
+ ]).
+@@ -131,7 +132,7 @@
+     end.
+ 
+ 
+-concat_sql_query(#search_sql{select=Select, from=From, where=Where, group_by=GroupBy, order=Order, limit=Limit, args=Args}, {OffsetN, LimitN}) ->
++concat_sql_query(#search_sql{select=Select, from=From, where=Where, group_by=GroupBy, order=Order, limit=SearchLimit, args=Args}, Limit1) ->
+     Where1 = case Where of
+         [] -> [];
+         _ -> "where " ++ Where
+@@ -144,14 +145,20 @@
+         [] -> [];
+         _ -> "group by "++GroupBy
+     end,
+-    {Parts, FinalArgs} = case Limit of
+-        undefined ->
+-            N = length(Args),
+-            Args1 = Args ++ [OffsetN-1, LimitN],
+-            {["select", Select, "from", From, Where1, GroupBy1, Order1, "offset", [$$|integer_to_list(N+1)], "limit", [$$|integer_to_list(N+2)]], Args1};
+-        _ ->
+-            {["select", Select, "from", From, Where1, GroupBy1, Order1, Limit], Args}
+-    end,
++    {Parts, FinalArgs} = case SearchLimit of
++                             undefined ->
++                                 case Limit1 of
++                                     undefined ->
++                                         %% No limit. Use with care.
++                                         {["select", Select, "from", From, Where1, GroupBy1, Order1], Args};
++                                     {OffsetN, LimitN} ->
++                                         N = length(Args),
++                                         Args1 = Args ++ [OffsetN-1, LimitN],
++                                         {["select", Select, "from", From, Where1, GroupBy1, Order1, "offset", [$$|integer_to_list(N+1)], "limit", [$$|integer_to_list(N+2)]], Args1}
++                                 end;
++                             _ ->
++                                 {["select", Select, "from", From, Where1, GroupBy1, Order1, SearchLimit], Args}
++                         end,
+     {string:join(Parts, " "), FinalArgs}.
+     
+ 
+@@ -266,3 +273,10 @@
+     cat_check1(Alias, true, {From,To}) ->
+         [$(|Alias] ++ ".pivot_category_nr < " ++ integer_to_list(From)
+         ++ " or "++ Alias ++ ".pivot_category_nr > " ++ integer_to_list(To) ++ ")".
++
++
++%% @doc Given a query as proplist, return all results.
++%% @spec search_query(Props, Context) -> [Id] | []
++query_(Props, Context) ->
++    S = search({'query', Props}, undefined, Context),
++    S#search_result.result.
