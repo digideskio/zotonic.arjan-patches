@@ -1,6 +1,18 @@
+diff -r bdc1683a9caf modules/mod_pubsub/tests/z_xmpp_tests.erl
+--- a/modules/mod_pubsub/tests/z_xmpp_tests.erl	Fri Feb 12 14:41:23 2010 +0100
++++ b/modules/mod_pubsub/tests/z_xmpp_tests.erl	Fri Feb 12 18:19:01 2010 +0100
+@@ -5,6 +5,8 @@
+ 
+ 
+ parse_xmpp_uri_test() ->
++    zotonic:ensure_started(exmpp),
++
+     Jid = exmpp_jid:parse("foo"),
+     ?assertEqual({Jid, [], [{"bar", true}]}, z_xmpp:parse_xmpp_uri("xmpp:foo?;bar")),
+     ?assertEqual({Jid, [], []}, z_xmpp:parse_xmpp_uri("xmpp:foo")),
 diff -r bdc1683a9caf modules/mod_search/mod_search.erl
 --- a/modules/mod_search/mod_search.erl	Fri Feb 12 14:41:23 2010 +0100
-+++ b/modules/mod_search/mod_search.erl	Fri Feb 12 17:37:35 2010 +0100
++++ b/modules/mod_search/mod_search.erl	Fri Feb 12 18:19:01 2010 +0100
 @@ -38,7 +38,7 @@
  
  -include("zotonic.hrl").
@@ -25,7 +37,17 @@ diff -r bdc1683a9caf modules/mod_search/mod_search.erl
  
  %% @spec handle_call(Request, From, State) -> {reply, Reply, State} |
  %%                                      {reply, Reply, State, Timeout} |
-@@ -84,6 +90,45 @@
+@@ -80,10 +86,54 @@
+ handle_call(Message, _From, State) ->
+     {stop, {unknown_call, Message}, State}.
+ 
++handle_cast({{rsc_delete, Id}, _Ctx}, State=#state{context=Context,query_watches=Watches}) ->
++    Watches1 = case proplists:get_value('query', m_rsc:p(Id, is_a, Context)) of
++                   undefined -> Watches;
++                   true -> search_query_notify:watches_remove(Id, Watches, Context)
++               end,
++    {noreply, State#state{query_watches=Watches1}};
+ 
  %% @spec handle_cast(Msg, State) -> {noreply, State} |
  %%                                  {noreply, State, Timeout} |
  %%                                  {stop, Reason, State}
@@ -38,11 +60,10 @@ diff -r bdc1683a9caf modules/mod_search/mod_search.erl
 +                   false -> Watches;
 +                   true -> search_query_notify:watches_update(Id, Watches, Context)
 +               end,
-+    ?DEBUG(Watches1),
 +    %% Item updated; send notifications for matched queries.
 +    search_query_notify:send_notifications(Id, search_query_notify:check_rsc(Id, Watches1, Context), Context),
 +    {noreply, State#state{query_watches=Watches1}};
-+        
++
 +handle_cast({{rsc_update_done, _, Id, CatsOld, CatsNew}, _Ctx}, State=#state{query_watches=Watches,context=Context}) ->
 +    %% Update; categories *have* changed.
 +    Watches1 = case lists:member('query', CatsOld) of
@@ -71,7 +92,7 @@ diff -r bdc1683a9caf modules/mod_search/mod_search.erl
  %% @doc Trap unknown casts
  handle_cast(Message, State) ->
      {stop, {unknown_cast, Message}, State}.
-@@ -103,7 +148,10 @@
+@@ -103,7 +153,10 @@
  %% cleaning up. When it returns, the gen_server terminates with Reason.
  %% The return value is ignored.
  terminate(_Reason, State) ->
@@ -85,7 +106,7 @@ diff -r bdc1683a9caf modules/mod_search/mod_search.erl
  %% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
 diff -r bdc1683a9caf modules/mod_search/support/search_query.erl
 --- a/modules/mod_search/support/search_query.erl	Fri Feb 12 14:41:23 2010 +0100
-+++ b/modules/mod_search/support/search_query.erl	Fri Feb 12 17:37:35 2010 +0100
++++ b/modules/mod_search/support/search_query.erl	Fri Feb 12 18:19:01 2010 +0100
 @@ -68,6 +68,7 @@
  
  % Convert request arguments to atom. Doing it this way avoids atom
@@ -110,7 +131,40 @@ diff -r bdc1683a9caf modules/mod_search/support/search_query.erl
  request_arg(Term)                  -> throw({error, {unknown_query_term, Term}}).
  
  
-@@ -216,6 +218,13 @@
+@@ -186,22 +188,23 @@
+ %% is_featured or is_featured={false,true}
+ %% Filter on whether an item is featured or not.
+ parse_query([{is_featured, Boolean}|Rest], Context, Result) ->
+-    {Arg, Result1} = add_arg(Boolean, Result),
+-     Result2 = add_where("rsc.is_featured = " ++ Arg, Result1),
+-     parse_query(Rest, Context, Result2);
++    {Arg, Result1} = add_arg(z_convert:to_bool(Boolean), Result),
++    Result2 = add_where("rsc.is_featured = " ++ Arg, Result1),
++    parse_query(Rest, Context, Result2);
+ 
+ %% upcoming
+ %% Filter on items whose end date lies in the future
+-parse_query([{upcoming, "true"}|Rest], Context, Result) ->
+-    parse_query([{upcoming, true}|Rest], Context, Result);
+-parse_query([{upcoming, true}|Rest], Context, Result) ->
+-     Result1 = add_where("rsc.pivot_date_end >= current_date", Result),
+-     parse_query(Rest, Context, Result1);
++parse_query([{upcoming, Boolean}|Rest], Context, Result) ->
++    Result1 = case z_convert:to_bool(Boolean) of
++                  true -> add_where("rsc.pivot_date_end >= current_date", Result);
++                  false -> Result
++              end,
++    parse_query(Rest, Context, Result1);
+ 
+ %% authoritative={true|false}
+ %% Filter on items which are authoritative or not
+ parse_query([{authoritative, Boolean}|Rest], Context, Result) ->
+-    {Arg, Result1} = add_arg(Boolean, Result),
++    {Arg, Result1} = add_arg(z_convert:to_bool(Boolean), Result),
+      Result2 = add_where("rsc.is_authoritative = " ++ Arg, Result1),
+      parse_query(Rest, Context, Result2);
+ 
+@@ -216,6 +219,13 @@
              throw({error, {invalid_query_id, Id}})
      end;
  
@@ -126,8 +180,8 @@ diff -r bdc1683a9caf modules/mod_search/support/search_query.erl
  parse_query([{sort, Sort}|Rest], Context, Result) ->
 diff -r bdc1683a9caf modules/mod_search/support/search_query_notify.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_search/support/search_query_notify.erl	Fri Feb 12 17:37:35 2010 +0100
-@@ -0,0 +1,86 @@
++++ b/modules/mod_search/support/search_query_notify.erl	Fri Feb 12 18:19:01 2010 +0100
+@@ -0,0 +1,92 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2009-2010 Arjan Scherpenisse
 +%% @date 2009-04-12
@@ -192,8 +246,8 @@ diff -r bdc1683a9caf modules/mod_search/support/search_query_notify.erl
 +    %% Pre-filter the list of queries according to category check
 +    W = lists:filter(fun({_, Props}) -> cat_matches(Cats, Props) andalso not(cat_matches(CatsEx, Props)) end, Watches),
 +    %% Filter the list by executing the query
-+    W2 = lists:filter(fun({QueryId, QueryProps}) -> execute_query(Id, QueryId, QueryProps, Context) end, W),
-+    [QueryId || {QueryId, _} <- W].
++    W2 = lists:filter(fun({_, QueryProps}) -> execute_query_check(Id, QueryProps, Context) end, W),
++    [QueryId || {QueryId, _} <- W2].
 +
 +
 +cat_matches([], _Props) -> false;
@@ -211,13 +265,19 @@ diff -r bdc1683a9caf modules/mod_search/support/search_query_notify.erl
 +    z_notifier:notify({rsc_query_item, QueryId, Id}, Context),
 +    send_notifications(Id, Rest, Context).
 +
-+execute_query(CheckId, QueryId, QueryProps, Context) ->
-+    true.
++
++%% @doc Check the given resource ID against the props of the query. Returns true if matches.
++execute_query_check(CheckId, QueryProps, Context) ->
++    Query = [{rsc_id, CheckId} | QueryProps],
++    case z_search:query_(Query, Context) of
++        [CheckId] -> true;
++        [] -> false
++    end.
 +
 diff -r bdc1683a9caf modules/mod_search/tests/mod_search_tests.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_search/tests/mod_search_tests.erl	Fri Feb 12 17:37:35 2010 +0100
-@@ -0,0 +1,79 @@
++++ b/modules/mod_search/tests/mod_search_tests.erl	Fri Feb 12 18:19:01 2010 +0100
+@@ -0,0 +1,82 @@
 +-module(mod_search_tests).
 +
 +-include_lib("eunit/include/eunit.hrl").
@@ -226,9 +286,12 @@ diff -r bdc1683a9caf modules/mod_search/tests/mod_search_tests.erl
 +
 +wait_for(QueryId, ItemId) ->
 +    receive 
-+        {{rsc_query_item, QueryId, ItemId}, _} ->
++        {'$gen_cast',
++         {{rsc_query_item, QueryId, ItemId}, _}} ->
 +            ok;
-+        _ ->
++        _X ->
++            ?DEBUG("Got wrong message, waiting for rsc_query_item:"),
++            ?DEBUG(_X),
 +            ?assert(false)
 +    after 1000 ->
 +            ?debugMsg("Did not receive a rsc_query_item."),
@@ -299,7 +362,7 @@ diff -r bdc1683a9caf modules/mod_search/tests/mod_search_tests.erl
 +
 diff -r bdc1683a9caf src/support/z_search.erl
 --- a/src/support/z_search.erl	Fri Feb 12 14:41:23 2010 +0100
-+++ b/src/support/z_search.erl	Fri Feb 12 17:37:35 2010 +0100
++++ b/src/support/z_search.erl	Fri Feb 12 18:19:01 2010 +0100
 @@ -27,6 +27,7 @@
      search_pager/3,
      search_pager/4,
