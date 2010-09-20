@@ -1,6 +1,6 @@
 diff -r 4371151609cf include/zotonic.hrl
 --- a/include/zotonic.hrl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/include/zotonic.hrl	Mon Sep 20 23:19:29 2010 +0200
++++ b/include/zotonic.hrl	Mon Sep 20 23:32:53 2010 +0200
 @@ -110,6 +110,9 @@
  %% For the z_db definitions
  -record(column_def, {name, type, length, is_nullable=true, default}).
@@ -13,7 +13,7 @@ diff -r 4371151609cf include/zotonic.hrl
  -define(ACL_ANONYMOUS_USER_ID, -1).
 diff -r 4371151609cf modules/mod_importexport/mod_importexport.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/mod_importexport.erl	Mon Sep 20 23:19:29 2010 +0200
++++ b/modules/mod_importexport/mod_importexport.erl	Mon Sep 20 23:32:53 2010 +0200
 @@ -0,0 +1,25 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2010 Arjan Scherpenisse
@@ -42,7 +42,7 @@ diff -r 4371151609cf modules/mod_importexport/mod_importexport.erl
 +
 diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpress.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/support/importexport_import_wordpress.erl	Mon Sep 20 23:19:29 2010 +0200
++++ b/modules/mod_importexport/support/importexport_import_wordpress.erl	Mon Sep 20 23:32:53 2010 +0200
 @@ -0,0 +1,217 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2010 Arjan Scherpenisse
@@ -161,13 +161,13 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +    Edges2 = lists:foldl(fun(Edg, Es) ->
 +                                 case xml_attrib(nicename, Edg) of
 +                                     undefined -> Es;
-+                                     Nm -> [{Name, relation, Nm} | Es]
++                                     Nm -> [{Name, subject, Nm} | Es]
 +                                 end
 +                         end, Edges1, xmerl_xpath:string("category[@domain=\"category\"]", Item)),
 +    Edges3 = lists:foldl(fun(Edg, Es) ->
 +                                 case xml_attrib(nicename, Edg) of
 +                                     undefined -> Es;
-+                                     Nm -> [{Name, relation, "tag_"++z_convert:to_list(Nm)} | Es]
++                                     Nm -> [{Name, subject, "tag_"++z_convert:to_list(Nm)} | Es]
 +                                 end
 +                         end, Edges2, xmerl_xpath:string("category[@domain=\"tag\"]", Item)),
 +
@@ -263,7 +263,7 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +    end.
 diff -r 4371151609cf priv/sites/default/templates/_article_summary.tpl
 --- a/priv/sites/default/templates/_article_summary.tpl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/priv/sites/default/templates/_article_summary.tpl	Mon Sep 20 23:19:29 2010 +0200
++++ b/priv/sites/default/templates/_article_summary.tpl	Mon Sep 20 23:32:53 2010 +0200
 @@ -18,7 +18,7 @@
  		{% endifequal %}
  			
@@ -285,9 +285,43 @@ diff -r 4371151609cf priv/sites/default/templates/_article_summary.tpl
 -{% endif %}	
 \ No newline at end of file
 +{% endif %}	
+diff -r 4371151609cf priv/sites/default/templates/archives.tpl
+--- a/priv/sites/default/templates/archives.tpl	Mon Sep 20 19:43:53 2010 +0200
++++ b/priv/sites/default/templates/archives.tpl	Mon Sep 20 23:32:53 2010 +0200
+@@ -16,8 +16,8 @@
+ 		
+ 		{% endfor %}
+ 	
+-		{% pager result=result dispatch='archives_y' year=q.year %}
++		{% pager result=result dispatch=zotonic_dispatch year=q.year month=q.month %}
+ 
+ 	{% endwith %}
+ 
+-{% endblock %}
+\ No newline at end of file
++{% endblock %}
+diff -r 4371151609cf priv/sites/default/templates/by_keyword.tpl
+--- a/priv/sites/default/templates/by_keyword.tpl	Mon Sep 20 19:43:53 2010 +0200
++++ b/priv/sites/default/templates/by_keyword.tpl	Mon Sep 20 23:32:53 2010 +0200
+@@ -8,13 +8,13 @@
+ 
+ {% block content %}
+ 
+-	{% with m.search.paged[{referrers id=q.id}] as result %}
++	{% with m.search.paged[{referrers id=q.id page=q.page pagelen=m.config.site.pagelen.value}] as result %}
+ 	
+ 		{% for id, predicate in result %}
+ 			{% include "_article_summary.tpl" id=id %}
+ 		{% endfor %}
+ 		
+-		{% pager result=result dispatch='archives_y' year=q.year %}
++		{% pager result=result dispatch='keyword' id=id slug=m.rsc[id].slug %}
+ 	
+ 	{% endwith %}
+ 
 diff -r 4371151609cf priv/sites/default/templates/home.tpl
 --- a/priv/sites/default/templates/home.tpl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/priv/sites/default/templates/home.tpl	Mon Sep 20 23:19:29 2010 +0200
++++ b/priv/sites/default/templates/home.tpl	Mon Sep 20 23:32:53 2010 +0200
 @@ -7,7 +7,7 @@
  	{% if m.rsc[id].is_featured %}
  	
@@ -299,7 +333,7 @@ diff -r 4371151609cf priv/sites/default/templates/home.tpl
  			<figure class="image-wrapper block-level-image">
 diff -r 4371151609cf src/support/z_datamodel.erl
 --- a/src/support/z_datamodel.erl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/src/support/z_datamodel.erl	Mon Sep 20 23:19:29 2010 +0200
++++ b/src/support/z_datamodel.erl	Mon Sep 20 23:32:53 2010 +0200
 @@ -35,33 +35,26 @@
  -include_lib("zotonic.hrl").
  
