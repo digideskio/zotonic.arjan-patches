@@ -1,6 +1,6 @@
 diff -r 4371151609cf include/zotonic.hrl
 --- a/include/zotonic.hrl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/include/zotonic.hrl	Mon Sep 20 22:54:56 2010 +0200
++++ b/include/zotonic.hrl	Mon Sep 20 23:19:29 2010 +0200
 @@ -110,6 +110,9 @@
  %% For the z_db definitions
  -record(column_def, {name, type, length, is_nullable=true, default}).
@@ -13,7 +13,7 @@ diff -r 4371151609cf include/zotonic.hrl
  -define(ACL_ANONYMOUS_USER_ID, -1).
 diff -r 4371151609cf modules/mod_importexport/mod_importexport.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/mod_importexport.erl	Mon Sep 20 22:54:56 2010 +0200
++++ b/modules/mod_importexport/mod_importexport.erl	Mon Sep 20 23:19:29 2010 +0200
 @@ -0,0 +1,25 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2010 Arjan Scherpenisse
@@ -42,8 +42,8 @@ diff -r 4371151609cf modules/mod_importexport/mod_importexport.erl
 +
 diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpress.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/support/importexport_import_wordpress.erl	Mon Sep 20 22:54:56 2010 +0200
-@@ -0,0 +1,209 @@
++++ b/modules/mod_importexport/support/importexport_import_wordpress.erl	Mon Sep 20 23:19:29 2010 +0200
+@@ -0,0 +1,217 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2010 Arjan Scherpenisse
 +%% @date 2010-09-20
@@ -114,32 +114,38 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +    Authors = xmerl_xpath:string("//dc:creator", Channel),
 +    {Data4, _, _} = lists:foldl(fun import_wxr_creator/2, {Data3, Base, Context}, Authors),
 +
++    %% FIXME in resources; for every category that is of type
++    %% 'revision'; only insert the resource with the highest post id
++    %% for that parent.
++
 +    Data4.
 +
++
++element_content(XPath, Node) ->
++    [X] = xmerl_xpath:string(XPath, Node), get_xmltext(X).
 +
 +
 +import_wxr_item(Item, {Data=#datamodel{resources=R,edges=E}, Base, Context}) ->
 +    %%?DEBUG(1),
 +    %%Data2 = Data#datamodel{resources=[1|R]},
-+    [Title] = xmerl_xpath:string("title", Item),
-+
-+    [Name0] = xmerl_xpath:string("wp:post_id", Item),
-+    Name = "wordpress_" ++ z_convert:to_list(get_xmltext(Name0)),
-+
-+    [Body] = xmerl_xpath:string("content:encoded", Item),
-+    [Summary] = xmerl_xpath:string("description", Item),
-+
-+    [PD] = xmerl_xpath:string("wp:post_date", Item),
-+    PubDate = z_convert:to_datetime(z_convert:to_list(get_xmltext(PD))),
++    Title = element_content("title", Item),
++    Name = "wordpress_" ++ z_convert:to_list(element_content("wp:post_id", Item)),
++    Body = element_content("content:encoded", Item),
++    Summary = element_content("description", Item),
++    IsPublished = map_wp_status(element_content("wp:status", Item)),
++    PubDate = z_convert:to_datetime(z_convert:to_list(element_content("wp:post_date", Item))),
 +
 +    Props =
-+        [{title, get_xmltext(Title)},
-+         {body, get_xmltext(Body)},
-+         {summary, get_xmltext(Summary)},
-+         {is_published, true},
-+         {publication_start, PubDate}
++        [{title, Title},
++         {body, Body},
++         {summary, Summary},
++         {is_published, IsPublished},
++         {publication_start, PubDate},
++         {slug, element_content("wp:post_name", Item)},
++         {wp_post_id, element_content("wp:post_id", Item)},
++         {wp_post_parent, element_content("wp:post_parent", Item)}
 +        ],
-+        
++
 +    Props1 = case xmerl_xpath:string("wp:attachment_url", Item) of
 +                 [] -> Props;
 +                 [U] -> [{media_url, z_convert:to_list(get_xmltext(U))} | Props]
@@ -215,8 +221,10 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +map_wp_cat(<<"post">>) -> article;
 +map_wp_cat(<<"page">>) -> text;
 +map_wp_cat(<<"attachment">>) ->media;
-+map_wp_cat(_) -> undefined.
++map_wp_cat(<<"revision">>) -> revision.
 +
++map_wp_status(<<"publish">>) -> true;
++map_wp_status(_) -> false.
 +
 +%% @doc Given an element, get its XML text. If "strip" attribute is
 +%% set, text is stripped of (x)html constructs if type attribute is
@@ -253,9 +261,45 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +        [#xmlAttribute{value=Value}|_] ->
 +            list_to_binary(Value)
 +    end.
+diff -r 4371151609cf priv/sites/default/templates/_article_summary.tpl
+--- a/priv/sites/default/templates/_article_summary.tpl	Mon Sep 20 19:43:53 2010 +0200
++++ b/priv/sites/default/templates/_article_summary.tpl	Mon Sep 20 23:19:29 2010 +0200
+@@ -18,7 +18,7 @@
+ 		{% endifequal %}
+ 			
+ 		<p class="important">
+-			{{ m.rsc[id].summary }} <a href="{{ m.rsc[id].page_url }}">Read&nbsp;more&nbsp;&raquo;</a>
++			{{ m.rsc[id].summary|default:m.rsc[id].body|striptags|truncate:300 }} <a href="{{ m.rsc[id].page_url }}">Read&nbsp;more&nbsp;&raquo;</a>
+ 		</p>
+ 
+ 	
+@@ -33,8 +33,8 @@
+ 		<h1><a href="{{m.rsc[id].page_url }}">{{ m.rsc[id].title }}</a></h1>
+ 		{% include "_article_meta.tpl" id=id %}
+ 		<p class="summary">
+-			{{ m.rsc[id].summary | truncate:100 }} <a href="{{ m.rsc[id].page_url }}">Read&nbsp;more&nbsp;&raquo;</a>
++			{{ m.rsc[id].summary|default:m.rsc[id].body|striptags|truncate:100 }} <a href="{{ m.rsc[id].page_url }}">Read&nbsp;more&nbsp;&raquo;</a>
+ 		</p>
+ 	</section>
+ 
+-{% endif %}	
+\ No newline at end of file
++{% endif %}	
+diff -r 4371151609cf priv/sites/default/templates/home.tpl
+--- a/priv/sites/default/templates/home.tpl	Mon Sep 20 19:43:53 2010 +0200
++++ b/priv/sites/default/templates/home.tpl	Mon Sep 20 23:19:29 2010 +0200
+@@ -7,7 +7,7 @@
+ 	{% if m.rsc[id].is_featured %}
+ 	
+ 		<h1>{{ m.rsc[id].title }}</h1>
+-		<p class="summary">{{ m.rsc[id].summary }}</p>
++		<p class="summary">{{ m.rsc[id].summary|default:m.rsc[id].body|striptags|truncate:300 }}</p>
+ 	
+ 		{% for id in m.rsc[id].media %}
+ 			<figure class="image-wrapper block-level-image">
 diff -r 4371151609cf src/support/z_datamodel.erl
 --- a/src/support/z_datamodel.erl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/src/support/z_datamodel.erl	Mon Sep 20 22:54:56 2010 +0200
++++ b/src/support/z_datamodel.erl	Mon Sep 20 23:19:29 2010 +0200
 @@ -35,33 +35,26 @@
  -include_lib("zotonic.hrl").
  
