@@ -1,6 +1,19 @@
+diff -r 4371151609cf include/zotonic.hrl
+--- a/include/zotonic.hrl	Mon Sep 20 19:43:53 2010 +0200
++++ b/include/zotonic.hrl	Mon Sep 20 22:54:56 2010 +0200
+@@ -110,6 +110,9 @@
+ %% For the z_db definitions
+ -record(column_def, {name, type, length, is_nullable=true, default}).
+ 
++%% For the datamodel: default resources to create.
++-record(datamodel, {categories=[], predicates=[], resources=[], media=[], menu=[], edges=[]}).
++
+ %% ACL administrator user id
+ -define(ACL_ADMIN_USER_ID, 1).
+ -define(ACL_ANONYMOUS_USER_ID, -1).
 diff -r 4371151609cf modules/mod_importexport/mod_importexport.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/mod_importexport.erl	Mon Sep 20 20:40:08 2010 +0200
++++ b/modules/mod_importexport/mod_importexport.erl	Mon Sep 20 22:54:56 2010 +0200
 @@ -0,0 +1,25 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2010 Arjan Scherpenisse
@@ -29,8 +42,8 @@ diff -r 4371151609cf modules/mod_importexport/mod_importexport.erl
 +
 diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpress.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/support/importexport_import_wordpress.erl	Mon Sep 20 20:40:08 2010 +0200
-@@ -0,0 +1,34 @@
++++ b/modules/mod_importexport/support/importexport_import_wordpress.erl	Mon Sep 20 22:54:56 2010 +0200
+@@ -0,0 +1,209 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2010 Arjan Scherpenisse
 +%% @date 2010-09-20
@@ -53,15 +66,279 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +
 +
 +-export([
++         wxr_import/2,
 +         wxr_to_datamodel/2
 +        ]).
 +
-+-define(ATOM_NS, 'http://www.w3.org/2005/Atom').
++
++-include_lib("xmerl/include/xmerl.hrl").
++-include("zotonic.hrl").
++
++
 +-define(RSS_NS, 'http://purl.org/rss/1.0/modules/content/').
 +-define(WFW_NS, 'http://wellformedweb.org/CommentAPI/').
 +-define(DC_NS, 'http://purl.org/dc/elements/1.1/').
-+-define(WP_NS, 'http://wordpress.org/export/1.0/').
++-define(WP_NS, "http://wordpress.org/export/1.0/").
++
++
++wxr_import(Filename, Context) ->
++    z_datamodel:manage(?MODULE, wxr_to_datamodel(Filename, Context), Context).
 +
 +
 +wxr_to_datamodel(Filename, Context) ->
-+    [].
++    {RootElem, _} = xmerl_scan:file(Filename),
++    [Channel] = xmerl_xpath:string("/rss/channel", RootElem),
++
++    %% Make sure we support the right version. FIXME - make more flexible.
++    [Version] = xmerl_xpath:string("wp:wxr_version", Channel),
++    <<"1.0">> = get_xmltext(Version),
++
++    [Link] = xmerl_xpath:string("link", Channel),
++    Base = z_convert:to_list(get_xmltext(Link)),
++
++    Data = #datamodel{},
++
++    %% Import the categories as keywords
++    Keywords = xmerl_xpath:string("wp:category", Channel),
++    {Data1, _, _} = lists:foldl(fun import_wxr_category/2, {Data, Base, Context}, Keywords),
++
++    %% Import all tags 
++    Tags = xmerl_xpath:string("//category[@domain=\"tag\"]", Channel),
++    {Data2, _, _} = lists:foldl(fun import_wxr_tag/2, {Data1, Base, Context}, Tags),
++
++    %% Import the posts
++    Items = xmerl_xpath:string("item", Channel),
++    {Data3, _, _} = lists:foldl(fun import_wxr_item/2, {Data2, Base, Context}, Items),
++
++    %% Import the authors
++    Authors = xmerl_xpath:string("//dc:creator", Channel),
++    {Data4, _, _} = lists:foldl(fun import_wxr_creator/2, {Data3, Base, Context}, Authors),
++
++    Data4.
++
++
++
++import_wxr_item(Item, {Data=#datamodel{resources=R,edges=E}, Base, Context}) ->
++    %%?DEBUG(1),
++    %%Data2 = Data#datamodel{resources=[1|R]},
++    [Title] = xmerl_xpath:string("title", Item),
++
++    [Name0] = xmerl_xpath:string("wp:post_id", Item),
++    Name = "wordpress_" ++ z_convert:to_list(get_xmltext(Name0)),
++
++    [Body] = xmerl_xpath:string("content:encoded", Item),
++    [Summary] = xmerl_xpath:string("description", Item),
++
++    [PD] = xmerl_xpath:string("wp:post_date", Item),
++    PubDate = z_convert:to_datetime(z_convert:to_list(get_xmltext(PD))),
++
++    Props =
++        [{title, get_xmltext(Title)},
++         {body, get_xmltext(Body)},
++         {summary, get_xmltext(Summary)},
++         {is_published, true},
++         {publication_start, PubDate}
++        ],
++        
++    Props1 = case xmerl_xpath:string("wp:attachment_url", Item) of
++                 [] -> Props;
++                 [U] -> [{media_url, z_convert:to_list(get_xmltext(U))} | Props]
++             end,
++    
++    Edges = [],
++
++    Edges1 = case xmerl_xpath:string("dc:creator", Item) of
++                 [] -> Edges;
++                 [C] -> [{Name, author, get_xmltext(C)} | Edges]
++             end,
++
++    Edges2 = lists:foldl(fun(Edg, Es) ->
++                                 case xml_attrib(nicename, Edg) of
++                                     undefined -> Es;
++                                     Nm -> [{Name, relation, Nm} | Es]
++                                 end
++                         end, Edges1, xmerl_xpath:string("category[@domain=\"category\"]", Item)),
++    Edges3 = lists:foldl(fun(Edg, Es) ->
++                                 case xml_attrib(nicename, Edg) of
++                                     undefined -> Es;
++                                     Nm -> [{Name, relation, "tag_"++z_convert:to_list(Nm)} | Es]
++                                 end
++                         end, Edges2, xmerl_xpath:string("category[@domain=\"tag\"]", Item)),
++
++    [Cat0] = xmerl_xpath:string("wp:post_type", Item),
++    case map_wp_cat(get_xmltext(Cat0)) of
++        undefined ->
++            %% Skip unknown categories
++            {Data, Base, Context};
++        Cat ->
++            Data2 = Data#datamodel{resources=[{Name,Cat,Props1}|R],edges=Edges3++E},
++            {Data2, Base, Context}
++    end.
++
++
++import_wxr_creator(Creator, {Data=#datamodel{resources=R}, Base, Context}) ->
++    Person = {get_xmltext(Creator),
++              person,
++              [{title, get_xmltext(Creator)}]},
++    Data2 = Data#datamodel{resources=[Person|R]},
++    {Data2, Base, Context}.
++
++
++%% Parse the wp:category tags.
++%% <wp:category><wp:category_nicename>art</wp:category_nicename><wp:category_parent></wp:category_parent><wp:cat_name><![CDATA[Art]]></wp:cat_name><wp:category_description><![CDATA[Everything art related. Stuff I like and stuff I hate, and even stuff I don't care about.]]></wp:category_description></wp:category>
++import_wxr_category(XmlCat, {Data=#datamodel{resources=R}, Base, Context}) ->
++    [Name] = xmerl_xpath:string("wp:category_nicename", XmlCat),
++    [Title] = xmerl_xpath:string("wp:cat_name", XmlCat),
++    Summary = case xmerl_xpath:string("wp:category_description", XmlCat) of
++                  [] -> <<>>;
++                  [El] -> get_xmltext(El)
++              end,
++    Cat = {get_xmltext(Name), keyword, [{title, get_xmltext(Title)}, {summary, Summary}]},
++    Data2 = Data#datamodel{resources=[Cat|R]},
++    {Data2, Base, Context}.
++
++%% Parse the tags with with posts are tagged.
++%% <category domain="tag"><![CDATA[mediamatic workshops toys rfid]]></category>
++import_wxr_tag(XmlCat, {Data=#datamodel{resources=R}, Base, Context}) ->
++    case xml_attrib(nicename, XmlCat) of
++        undefined ->
++            {Data, Base, Context};
++        Nm ->
++            Name = "tag_" ++ z_convert:to_list(Nm),
++            Title = get_xmltext(XmlCat),
++            Cat = {Name, keyword, [{title, Title}]},
++            Data2 = Data#datamodel{resources=[Cat|R]},
++            {Data2, Base, Context}
++    end.
++
++
++map_wp_cat(<<"post">>) -> article;
++map_wp_cat(<<"page">>) -> text;
++map_wp_cat(<<"attachment">>) ->media;
++map_wp_cat(_) -> undefined.
++
++
++%% @doc Given an element, get its XML text. If "strip" attribute is
++%% set, text is stripped of (x)html constructs if type attribute is
++%% html or xhtml.
++get_xmltext(El) ->
++    get_xmltext(El, true).
++get_xmltext(Element=#xmlElement{content=Content}, Strip) ->
++    Text = collapse_xmltext(Content),
++    Text2 = case Strip of
++                false -> Text;
++                true ->
++                    case xml_attrib(type, Element) of
++                        B when B =:= <<"html">> orelse B =:= <<"xhtml">> ->
++                            %% Strip tags
++                            z_html:strip(Text);
++                        B2 when B2 =:= undefined orelse B2 =:= <<"text">> ->
++                            %% Do not strip.
++                            Text
++                    end
++            end,
++    z_convert:to_binary(Text2).
++
++
++%% @doc Given a list of XML test, implode it into one list.
++%% @spec collapse_xmltext([#xmlText]) -> string()
++collapse_xmltext(Content) ->
++    lists:flatten([X#xmlText.value || X <- Content]).
++
++%% @doc Given an XML element, get the value of an attribute.
++%% @spec xml_attrib(atom(), #xmlElement) -> binary() | undefined
++xml_attrib(Name, #xmlElement{attributes=Attrs}) ->
++    case lists:filter(fun(#xmlAttribute{name=Nm}) -> Nm =:= Name end, Attrs) of
++        [] -> undefined;
++        [#xmlAttribute{value=Value}|_] ->
++            list_to_binary(Value)
++    end.
+diff -r 4371151609cf src/support/z_datamodel.erl
+--- a/src/support/z_datamodel.erl	Mon Sep 20 19:43:53 2010 +0200
++++ b/src/support/z_datamodel.erl	Mon Sep 20 22:54:56 2010 +0200
+@@ -35,33 +35,26 @@
+ -include_lib("zotonic.hrl").
+ 
+ 
++manage(Module, Datamodel, Context) when is_list(Datamodel) ->
++    %% Backwards compatibility with old datamodel notation.
++    manage(Module, 
++           #datamodel{categories=proplists:get_value(categories, Datamodel, []),
++                      predicates=proplists:get_value(predicates, Datamodel, []),
++                      resources=proplists:get_value(resources, Datamodel, []),
++                      media=proplists:get_value(media, Datamodel, []),
++                      menu=proplists:get_value(menu, Datamodel, []),
++                      edges=proplists:get_value(edges, Datamodel, [])
++                     }, 
++           Context);
+ 
+-manage(Module, Datamodel, Context) ->
++manage(Module, Datamodel=#datamodel{}, Context) ->
+ 	AdminContext = z_acl:sudo(Context),
+-    case proplists:get_value(categories, Datamodel) of
+-        undefined  -> ok;
+-        Categories -> [manage_category(Module, Cat, AdminContext) || Cat <- Categories]
+-    end,
+-    case proplists:get_value(predicates, Datamodel) of
+-        undefined -> ok;
+-        Preds     -> [manage_predicate(Module, Pred, AdminContext) || Pred <- Preds]
+-    end,
+-    case proplists:get_value(resources, Datamodel) of
+-        undefined -> ok;
+-        Rs        -> [manage_resource(Module, R, AdminContext) || R <- Rs]
+-    end,
+-    case proplists:get_value(media, Datamodel) of
+-        undefined -> ok;
+-        Ms        -> [manage_medium(Module, Medium, AdminContext) || Medium <- Ms]
+-    end,
+-    case proplists:get_value(menu, Datamodel) of
+-        undefined -> ok;
+-        Menu      -> manage_menu(Module, Menu, AdminContext)
+-    end,
+-    case proplists:get_value(edges, Datamodel) of
+-        undefined -> ok;
+-        Edges     -> [manage_edge(Module, Edge, AdminContext) || Edge <- Edges]
+-    end,
++    [manage_category(Module, Cat, AdminContext) || Cat <- Datamodel#datamodel.categories],
++    [manage_predicate(Module, Pred, AdminContext) || Pred <- Datamodel#datamodel.predicates],
++    [manage_resource(Module, R, AdminContext) || R <- Datamodel#datamodel.resources],
++    [manage_medium(Module, Medium, AdminContext) || Medium <- Datamodel#datamodel.media],
++    manage_menu(Module, Datamodel#datamodel.menu, AdminContext),
++    [manage_edge(Module, Edge, AdminContext) || Edge <- Datamodel#datamodel.edges],
+     ok.
+ 
+ 
+@@ -163,7 +156,20 @@
+                                                               _ -> Props2
+                                                           end,
+                                                  ?zInfo(io_lib:format("Creating new resource '~p'", [Name]), Context),
+-                                                 {m_rsc:insert(Props3, Context), [Name | ManagedNames ]};
++                                                 {ok, Id} = m_rsc:insert(Props3, Context),
++                                                 case proplists:get_value(media_url, Props3) of
++                                                     undefined ->
++                                                         nop;
++                                                     Url ->
++                                                         m_media:replace_url(Url, Id, [], Context)
++                                                 end,
++                                                 case proplists:get_value(media_file, Props3) of
++                                                     undefined ->
++                                                         nop;
++                                                     File ->
++                                                         m_media:replace_file(File, Id, Context)
++                                                 end,
++                                                 {{ok, Id}, [Name | ManagedNames ]};
+                                              true ->
+                                                  ?zInfo(io_lib:format("Resource '~p' was deleted", [Name]), Context),
+                                                  {{ok}, ManagedNames}
+@@ -213,6 +219,11 @@
+ map_prop({file, Filepath}, _Context) ->
+     {ok, Txt} = file:read_file(Filepath),
+     Txt;
++map_prop({to_id, Name}, Context) ->
++    case m_rsc:name_to_id(Name, Context) of
++             {ok, Id} -> Id;
++             _ -> undefined
++    end;
+ map_prop(Value, _Context) ->
+     Value.
+ 
