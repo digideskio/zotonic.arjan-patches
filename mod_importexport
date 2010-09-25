@@ -1,6 +1,6 @@
-diff -r 4371151609cf include/zotonic.hrl
---- a/include/zotonic.hrl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/include/zotonic.hrl	Mon Sep 20 23:32:53 2010 +0200
+diff -r 0c1394664afa include/zotonic.hrl
+--- a/include/zotonic.hrl	Sat Sep 25 11:22:59 2010 +0200
++++ b/include/zotonic.hrl	Sat Sep 25 18:02:59 2010 +0200
 @@ -110,6 +110,9 @@
  %% For the z_db definitions
  -record(column_def, {name, type, length, is_nullable=true, default}).
@@ -11,10 +11,10 @@ diff -r 4371151609cf include/zotonic.hrl
  %% ACL administrator user id
  -define(ACL_ADMIN_USER_ID, 1).
  -define(ACL_ANONYMOUS_USER_ID, -1).
-diff -r 4371151609cf modules/mod_importexport/mod_importexport.erl
+diff -r 0c1394664afa modules/mod_importexport/mod_importexport.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/mod_importexport.erl	Mon Sep 20 23:32:53 2010 +0200
-@@ -0,0 +1,25 @@
++++ b/modules/mod_importexport/mod_importexport.erl	Sat Sep 25 18:02:59 2010 +0200
+@@ -0,0 +1,38 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2010 Arjan Scherpenisse
 +%% @date 2010-09-20
@@ -40,10 +40,23 @@ diff -r 4371151609cf modules/mod_importexport/mod_importexport.erl
 +-mod_title("Blog import/export").
 +-mod_description("Provides import/export functionality for your blog.").
 +
-diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpress.erl
++-include_lib("zotonic.hrl").
++
++%% interface functions
++-export([
++	event/2
++]).
++
++
++event({submit, {wxr_upload, []}, _TriggerId, _TargetId}, Context) ->
++	{upload, _OriginalFilename, TmpFile} = z_context:get_q_validated("upload_file", Context),
++    ok = importexport_import_wordpress:wxr_import(TmpFile, Context),
++    ?DEBUG(ok),
++	z_render:wire([{dialog_close, []}, {reload, []}], Context).
+diff -r 0c1394664afa modules/mod_importexport/support/importexport_import_wordpress.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/support/importexport_import_wordpress.erl	Mon Sep 20 23:32:53 2010 +0200
-@@ -0,0 +1,217 @@
++++ b/modules/mod_importexport/support/importexport_import_wordpress.erl	Sat Sep 25 18:02:59 2010 +0200
+@@ -0,0 +1,272 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2010 Arjan Scherpenisse
 +%% @date 2010-09-20
@@ -67,7 +80,8 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +
 +-export([
 +         wxr_import/2,
-+         wxr_to_datamodel/2
++         wxr_to_datamodel/2,
++         test/0
 +        ]).
 +
 +
@@ -134,6 +148,7 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +    Summary = element_content("description", Item),
 +    IsPublished = map_wp_status(element_content("wp:status", Item)),
 +    PubDate = z_convert:to_datetime(z_convert:to_list(element_content("wp:post_date", Item))),
++    PostParent = z_convert:to_integer(element_content("wp:post_parent", Item)),
 +
 +    Props =
 +        [{title, Title},
@@ -143,7 +158,7 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +         {publication_start, PubDate},
 +         {slug, element_content("wp:post_name", Item)},
 +         {wp_post_id, element_content("wp:post_id", Item)},
-+         {wp_post_parent, element_content("wp:post_parent", Item)}
++         {wp_post_parent, PostParent}
 +        ],
 +
 +    Props1 = case xmerl_xpath:string("wp:attachment_url", Item) of
@@ -177,7 +192,15 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +            %% Skip unknown categories
 +            {Data, Base, Context};
 +        Cat ->
-+            Data2 = Data#datamodel{resources=[{Name,Cat,Props1}|R],edges=Edges3++E},
++            Edges4 = case Cat =:= media andalso PostParent =/= 0 of 
++                         true -> 
++                             %% When its a media, look at post parent and insert parent->depiction->media edge.
++                             P = lists:flatten(io_lib:format("wordpress_~p", [PostParent])),
++                             [ {P, depiction, Name} | Edges3];
++                         _ -> 
++                             Edges3
++                     end,
++            Data2 = Data#datamodel{resources=[{Name,Cat,Props1}|R],edges=Edges4++E},
 +            {Data2, Base, Context}
 +    end.
 +
@@ -221,9 +244,10 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +map_wp_cat(<<"post">>) -> article;
 +map_wp_cat(<<"page">>) -> text;
 +map_wp_cat(<<"attachment">>) ->media;
-+map_wp_cat(<<"revision">>) -> revision.
++map_wp_cat(_) -> undefined.
 +
 +map_wp_status(<<"publish">>) -> true;
++map_wp_status(<<"inherit">>) -> true;
 +map_wp_status(_) -> false.
 +
 +%% @doc Given an element, get its XML text. If "strip" attribute is
@@ -261,9 +285,62 @@ diff -r 4371151609cf modules/mod_importexport/support/importexport_import_wordpr
 +        [#xmlAttribute{value=Value}|_] ->
 +            list_to_binary(Value)
 +    end.
-diff -r 4371151609cf priv/sites/default/templates/_article_summary.tpl
---- a/priv/sites/default/templates/_article_summary.tpl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/priv/sites/default/templates/_article_summary.tpl	Mon Sep 20 23:32:53 2010 +0200
++
++
++
++wp_embed_tags(BodyText) ->
++    Re = "(<a .*?>)?<img.*?class=\"(.*?wp-image-([0-9]+).*?)\".*?/>(</a>)?",
++    case re:run(BodyText, Re, [{capture, all}]) of
++        nomatch ->
++            BodyText;
++        {match, [{Start, Len}, {-1,0}, {CS, CL}, {IdStart,IdL}]} ->
++            Class = string:substr(BodyText, CS+1,CL),
++            Opts = class_to_embed_opts(Class),
++            substr(BodyText, 0, Start) 
++                ++ "<!-- z-media wordpress_" ++ string:substr(BodyText, IdStart+1, IdL) ++ " " ++ Opts ++ " -->"
++                ++ wp_embed_tags(string:substr(BodyText, Start+Len+1));
++        _Foo ->
++            ?DEBUG(_Foo)
++    end.
++
++
++substr(_X, 0, 0) ->
++    [];
++substr(X, Y, Z) ->
++    string:substr(X, Y, Z).
++
++class_to_embed_opts(Class) ->
++    L = lists:flatten([map_class_attr(C) || C <- string:tokens(Class, " ")]),
++    "{" ++ string:substr(L, 1, length(L)-2) ++ "}".
++
++map_class_attr("alignnone") -> "align:\"block\", ";
++map_class_attr("alignright") -> "align:\"right\", ";
++map_class_attr("alignleft") -> "align:\"left\", ";
++map_class_attr("size-full") -> "size:\"large\", ";
++map_class_attr("size-medium") -> "size:\"middle\", ";
++map_class_attr("size-thumbnail") -> "size:\"small\", ";
++map_class_attr(_) -> [].
++
++
++test() ->
++    "<!-- z-media wordpress_29 {align:\"right\", size:\"large\"} -->" = wp_embed_tags("<img class=\"alignright size-full wp-image-29\" style=\"border: 0pt none; margin-left: 10px;\" title=\"Announcement Retroweek\" src=\"http://idum5.net/blog/wp-content/uploads/poster-klein.jpg\" alt=\"Announcement Retroweek\" width=\"217\" height=\"307\" />"),
++%%    "<!-- z-media wordpress_29 -->" = wp_embed_tags("<a href=\"http://idum5.net/blog/wp-content/uploads/screenshot4.png\"><img class=\"alignright size-full wp-image-29\" style=\"border: 0pt none; margin-left: 10px;\" title=\"Announcement Retroweek\" src=\"http://idum5.net/blog/wp-content/uploads/poster-klein.jpg\" alt=\"Announcement Retroweek\" width=\"217\" height=\"307\" /></a>"),
++
++    ok.
++
++    
+diff -r 0c1394664afa modules/mod_importexport/templates/_admin_status.tpl
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/modules/mod_importexport/templates/_admin_status.tpl	Sat Sep 25 18:02:59 2010 +0200
+@@ -0,0 +1,5 @@
++<h2>{_ Import _}</h2>
++<div class="clearfix">
++    {% button class="" text=_"Wordpress import" action={dialog_open title=_"Import WXR file" template="_dialog_import_wordpress.tpl"} %} 
++    <span class="expl">{_ Import a Wordpress WXR export file into Zotonic. _}</span>
++</div>
+diff -r 0c1394664afa priv/sites/default/templates/_article_summary.tpl
+--- a/priv/sites/default/templates/_article_summary.tpl	Sat Sep 25 11:22:59 2010 +0200
++++ b/priv/sites/default/templates/_article_summary.tpl	Sat Sep 25 18:02:59 2010 +0200
 @@ -18,7 +18,7 @@
  		{% endifequal %}
  			
@@ -285,9 +362,9 @@ diff -r 4371151609cf priv/sites/default/templates/_article_summary.tpl
 -{% endif %}	
 \ No newline at end of file
 +{% endif %}	
-diff -r 4371151609cf priv/sites/default/templates/archives.tpl
---- a/priv/sites/default/templates/archives.tpl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/priv/sites/default/templates/archives.tpl	Mon Sep 20 23:32:53 2010 +0200
+diff -r 0c1394664afa priv/sites/default/templates/archives.tpl
+--- a/priv/sites/default/templates/archives.tpl	Sat Sep 25 11:22:59 2010 +0200
++++ b/priv/sites/default/templates/archives.tpl	Sat Sep 25 18:02:59 2010 +0200
 @@ -16,8 +16,8 @@
  		
  		{% endfor %}
@@ -300,9 +377,9 @@ diff -r 4371151609cf priv/sites/default/templates/archives.tpl
 -{% endblock %}
 \ No newline at end of file
 +{% endblock %}
-diff -r 4371151609cf priv/sites/default/templates/by_keyword.tpl
---- a/priv/sites/default/templates/by_keyword.tpl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/priv/sites/default/templates/by_keyword.tpl	Mon Sep 20 23:32:53 2010 +0200
+diff -r 0c1394664afa priv/sites/default/templates/by_keyword.tpl
+--- a/priv/sites/default/templates/by_keyword.tpl	Sat Sep 25 11:22:59 2010 +0200
++++ b/priv/sites/default/templates/by_keyword.tpl	Sat Sep 25 18:02:59 2010 +0200
 @@ -8,13 +8,13 @@
  
  {% block content %}
@@ -319,9 +396,9 @@ diff -r 4371151609cf priv/sites/default/templates/by_keyword.tpl
  	
  	{% endwith %}
  
-diff -r 4371151609cf priv/sites/default/templates/home.tpl
---- a/priv/sites/default/templates/home.tpl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/priv/sites/default/templates/home.tpl	Mon Sep 20 23:32:53 2010 +0200
+diff -r 0c1394664afa priv/sites/default/templates/home.tpl
+--- a/priv/sites/default/templates/home.tpl	Sat Sep 25 11:22:59 2010 +0200
++++ b/priv/sites/default/templates/home.tpl	Sat Sep 25 18:02:59 2010 +0200
 @@ -7,7 +7,7 @@
  	{% if m.rsc[id].is_featured %}
  	
@@ -331,9 +408,9 @@ diff -r 4371151609cf priv/sites/default/templates/home.tpl
  	
  		{% for id in m.rsc[id].media %}
  			<figure class="image-wrapper block-level-image">
-diff -r 4371151609cf src/support/z_datamodel.erl
---- a/src/support/z_datamodel.erl	Mon Sep 20 19:43:53 2010 +0200
-+++ b/src/support/z_datamodel.erl	Mon Sep 20 23:32:53 2010 +0200
+diff -r 0c1394664afa src/support/z_datamodel.erl
+--- a/src/support/z_datamodel.erl	Sat Sep 25 11:22:59 2010 +0200
++++ b/src/support/z_datamodel.erl	Sat Sep 25 18:02:59 2010 +0200
 @@ -35,33 +35,26 @@
  -include_lib("zotonic.hrl").
  
