@@ -1,6 +1,6 @@
 diff -r 0c1394664afa include/zotonic.hrl
 --- a/include/zotonic.hrl	Sat Sep 25 11:22:59 2010 +0200
-+++ b/include/zotonic.hrl	Sat Sep 25 18:02:59 2010 +0200
++++ b/include/zotonic.hrl	Sun Sep 26 19:03:59 2010 +0200
 @@ -110,6 +110,9 @@
  %% For the z_db definitions
  -record(column_def, {name, type, length, is_nullable=true, default}).
@@ -11,10 +11,22 @@ diff -r 0c1394664afa include/zotonic.hrl
  %% ACL administrator user id
  -define(ACL_ADMIN_USER_ID, 1).
  -define(ACL_ANONYMOUS_USER_ID, -1).
+diff -r 0c1394664afa modules/mod_admin/resources/resource_admin_media_preview.erl
+--- a/modules/mod_admin/resources/resource_admin_media_preview.erl	Sat Sep 25 11:22:59 2010 +0200
++++ b/modules/mod_admin/resources/resource_admin_media_preview.erl	Sun Sep 26 19:03:59 2010 +0200
+@@ -65,7 +65,7 @@
+ 
+ to_image(ReqData, Context) ->
+     Opts = [{width, 100}, {height, 100}],
+-    Id = z_convert:to_integer(z_context:get("id", Context)),
++    Id = m_rsc:rid(z_context:get("id", Context), Context),
+     {ok, Url} = z_media_tag:url(Id, Opts, Context),
+     ReqData1 = wrq:set_resp_header("Location", binary_to_list(Url), ReqData),
+     {{halt, 303}, ReqData1, Context}.
 diff -r 0c1394664afa modules/mod_importexport/mod_importexport.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/mod_importexport.erl	Sat Sep 25 18:02:59 2010 +0200
-@@ -0,0 +1,38 @@
++++ b/modules/mod_importexport/mod_importexport.erl	Sun Sep 26 19:03:59 2010 +0200
+@@ -0,0 +1,44 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2010 Arjan Scherpenisse
 +%% @date 2010-09-20
@@ -49,14 +61,20 @@ diff -r 0c1394664afa modules/mod_importexport/mod_importexport.erl
 +
 +
 +event({submit, {wxr_upload, []}, _TriggerId, _TargetId}, Context) ->
-+	{upload, _OriginalFilename, TmpFile} = z_context:get_q_validated("upload_file", Context),
-+    ok = importexport_import_wordpress:wxr_import(TmpFile, Context),
-+    ?DEBUG(ok),
-+	z_render:wire([{dialog_close, []}, {reload, []}], Context).
++	{upload, OriginalFilename, TmpFile} = z_context:get_q_validated("upload_file", Context),
++
++    spawn(fun() ->
++                  ok = importexport_import_wordpress:wxr_import(TmpFile, Context),
++                  Msg = lists:flatten(io_lib:format("The import of ~p has completed.", [OriginalFilename])),
++                  z_session_manager:broadcast(#broadcast{type="notice", message=Msg, title="Wordpress import", stay=false}, Context)
++          end),
++
++    Context1 = z_render:growl("Please hold on while the file is importing. You will get a notification when it is ready.", Context),
++	z_render:wire([{dialog_close, []}], Context1).
 diff -r 0c1394664afa modules/mod_importexport/support/importexport_import_wordpress.erl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/support/importexport_import_wordpress.erl	Sat Sep 25 18:02:59 2010 +0200
-@@ -0,0 +1,272 @@
++++ b/modules/mod_importexport/support/importexport_import_wordpress.erl	Sun Sep 26 19:03:59 2010 +0200
+@@ -0,0 +1,293 @@
 +%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
 +%% @copyright 2010 Arjan Scherpenisse
 +%% @date 2010-09-20
@@ -147,15 +165,14 @@ diff -r 0c1394664afa modules/mod_importexport/support/importexport_import_wordpr
 +    Body = element_content("content:encoded", Item),
 +    Summary = element_content("description", Item),
 +    IsPublished = map_wp_status(element_content("wp:status", Item)),
-+    PubDate = z_convert:to_datetime(z_convert:to_list(element_content("wp:post_date", Item))),
 +    PostParent = z_convert:to_integer(element_content("wp:post_parent", Item)),
 +
 +    Props =
 +        [{title, Title},
-+         {body, Body},
++         {body, wp_embed_tags(Body)},
 +         {summary, Summary},
 +         {is_published, IsPublished},
-+         {publication_start, PubDate},
++         {custom_slug, true},
 +         {slug, element_content("wp:post_name", Item)},
 +         {wp_post_id, element_content("wp:post_id", Item)},
 +         {wp_post_parent, PostParent}
@@ -165,7 +182,13 @@ diff -r 0c1394664afa modules/mod_importexport/support/importexport_import_wordpr
 +                 [] -> Props;
 +                 [U] -> [{media_url, z_convert:to_list(get_xmltext(U))} | Props]
 +             end,
-+    
++
++    Props2 = case z_convert:to_datetime(z_convert:to_list(element_content("wp:post_date", Item))) of
++                 {{0,0,0},{0,0,0}} -> Props1;
++                 D ->
++                     [{publication_start, D}|Props1]
++             end,
++
 +    Edges = [],
 +
 +    Edges1 = case xmerl_xpath:string("dc:creator", Item) of
@@ -200,7 +223,7 @@ diff -r 0c1394664afa modules/mod_importexport/support/importexport_import_wordpr
 +                         _ -> 
 +                             Edges3
 +                     end,
-+            Data2 = Data#datamodel{resources=[{Name,Cat,Props1}|R],edges=Edges4++E},
++            Data2 = Data#datamodel{resources=[{Name,Cat,Props2}|R],edges=Edges4++E},
 +            {Data2, Base, Context}
 +    end.
 +
@@ -288,6 +311,9 @@ diff -r 0c1394664afa modules/mod_importexport/support/importexport_import_wordpr
 +
 +
 +
++wp_embed_tags(B) when is_binary(B) ->
++    list_to_binary(wp_embed_tags(binary_to_list(B)));
++
 +wp_embed_tags(BodyText) ->
 +    Re = "(<a .*?>)?<img.*?class=\"(.*?wp-image-([0-9]+).*?)\".*?/>(</a>)?",
 +    case re:run(BodyText, Re, [{capture, all}]) of
@@ -295,22 +321,28 @@ diff -r 0c1394664afa modules/mod_importexport/support/importexport_import_wordpr
 +            BodyText;
 +        {match, [{Start, Len}, {-1,0}, {CS, CL}, {IdStart,IdL}]} ->
 +            Class = string:substr(BodyText, CS+1,CL),
-+            Opts = class_to_embed_opts(Class),
-+            substr(BodyText, 0, Start) 
++            Opts = class_to_embed_opts(Class, false),
++            string:substr(BodyText, 1, Start) 
 +                ++ "<!-- z-media wordpress_" ++ string:substr(BodyText, IdStart+1, IdL) ++ " " ++ Opts ++ " -->"
 +                ++ wp_embed_tags(string:substr(BodyText, Start+Len+1));
-+        _Foo ->
-+            ?DEBUG(_Foo)
++        {match, [{Start, Len}, {_AS,_AL}, {CS, CL}, {IdStart,IdL}, {_,4}]} ->
++            Class = string:substr(BodyText, CS+1,CL),
++            Opts = class_to_embed_opts(Class, true),
++            string:substr(BodyText, 1, Start) 
++                ++ "<!-- z-media wordpress_" ++ string:substr(BodyText, IdStart+1, IdL) ++ " " ++ Opts ++ " -->"
++                ++ wp_embed_tags(string:substr(BodyText, Start+Len+1))
++%%            ?DEBUG(F)
++%%            {match, [{Start, Len}, {X,Y}, {CS, CL}, {IdStart,IdL}]} ->
++
 +    end.
 +
 +
-+substr(_X, 0, 0) ->
-+    [];
-+substr(X, Y, Z) ->
-+    string:substr(X, Y, Z).
-+
-+class_to_embed_opts(Class) ->
-+    L = lists:flatten([map_class_attr(C) || C <- string:tokens(Class, " ")]),
++class_to_embed_opts(Class, Link) ->
++    Ln = case Link of 
++             true -> "link:true, ";
++             false -> []
++         end,
++    L = lists:flatten([map_class_attr(C) || C <- string:tokens(Class, " ")])++Ln,
 +    "{" ++ string:substr(L, 1, length(L)-2) ++ "}".
 +
 +map_class_attr("alignnone") -> "align:\"block\", ";
@@ -324,23 +356,108 @@ diff -r 0c1394664afa modules/mod_importexport/support/importexport_import_wordpr
 +
 +test() ->
 +    "<!-- z-media wordpress_29 {align:\"right\", size:\"large\"} -->" = wp_embed_tags("<img class=\"alignright size-full wp-image-29\" style=\"border: 0pt none; margin-left: 10px;\" title=\"Announcement Retroweek\" src=\"http://idum5.net/blog/wp-content/uploads/poster-klein.jpg\" alt=\"Announcement Retroweek\" width=\"217\" height=\"307\" />"),
-+%%    "<!-- z-media wordpress_29 -->" = wp_embed_tags("<a href=\"http://idum5.net/blog/wp-content/uploads/screenshot4.png\"><img class=\"alignright size-full wp-image-29\" style=\"border: 0pt none; margin-left: 10px;\" title=\"Announcement Retroweek\" src=\"http://idum5.net/blog/wp-content/uploads/poster-klein.jpg\" alt=\"Announcement Retroweek\" width=\"217\" height=\"307\" /></a>"),
++
++    "foobar <!-- z-media wordpress_29 {align:\"left\", size:\"middle\"} -->baz" = wp_embed_tags("foobar <img class=\"alignleft size-medium wp-image-29\" style=\"border: 0pt none; margin-left: 10px;\" title=\"Announcement Retroweek\" src=\"http://idum5.net/blog/wp-content/uploads/poster-klein.jpg\" alt=\"Announcement Retroweek\" width=\"217\" height=\"307\" />baz"),
++
++    "foo<!-- z-media wordpress_29 {align:\"right\", size:\"large\"} -->bar<!-- z-media wordpress_29 {align:\"right\", size:\"large\"} -->baz" = 
++        wp_embed_tags("foo<img class=\"alignright size-full wp-image-29\" style=\"border: 0pt none; margin-left: 10px;\" title=\"Announcement Retroweek\" src=\"http://idum5.net/blog/wp-content/uploads/poster-klein.jpg\" alt=\"Announcement Retroweek\" width=\"217\" height=\"307\" />bar<img class=\"alignright size-full wp-image-29\" style=\"border: 0pt none; margin-left: 10px;\" title=\"Announcement Retroweek\" src=\"http://idum5.net/blog/wp-content/uploads/poster-klein.jpg\" alt=\"Announcement Retroweek\" width=\"217\" height=\"307\" />baz"),
++
++
++    "<!-- z-media wordpress_29 {align:\"right\", size:\"large\", link:true} -->" = wp_embed_tags("<a href=\"http://idum5.net/blog/wp-content/uploads/screenshot4.png\"><img class=\"alignright size-full wp-image-29\" style=\"border: 0pt none; margin-left: 10px;\" title=\"Announcement Retroweek\" src=\"http://idum5.net/blog/wp-content/uploads/poster-klein.jpg\" alt=\"Announcement Retroweek\" width=\"217\" height=\"307\" /></a>"),
 +
 +    ok.
 +
 +    
 diff -r 0c1394664afa modules/mod_importexport/templates/_admin_status.tpl
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/modules/mod_importexport/templates/_admin_status.tpl	Sat Sep 25 18:02:59 2010 +0200
++++ b/modules/mod_importexport/templates/_admin_status.tpl	Sun Sep 26 19:03:59 2010 +0200
 @@ -0,0 +1,5 @@
 +<h2>{_ Import _}</h2>
 +<div class="clearfix">
 +    {% button class="" text=_"Wordpress import" action={dialog_open title=_"Import WXR file" template="_dialog_import_wordpress.tpl"} %} 
 +    <span class="expl">{_ Import a Wordpress WXR export file into Zotonic. _}</span>
 +</div>
+diff -r 0c1394664afa modules/mod_search/mod_search.erl
+--- a/modules/mod_search/mod_search.erl	Sat Sep 25 11:22:59 2010 +0200
++++ b/modules/mod_search/mod_search.erl	Sun Sep 26 19:03:59 2010 +0200
+@@ -218,16 +218,16 @@
+ 
+ search({archive_year_month, [{cat,Cat}]}, OffsetLimit, Context) ->
+     Q = #search_sql{
+-      select="date_part('year', r.publication_start)::varchar as year, date_part('month', r.publication_start)::varchar as month, count(*) as count",
++      select="date_part('year', r.publication_start)::int as year, date_part('month', r.publication_start)::int as month, count(*) as count",
+       from="rsc r",
+       tables=[{rsc, "r"}],
+       assoc=true,
+       cats=[{"r", Cat}],
+       group_by="date_part('year', r.publication_start), date_part('month', r.publication_start)",
+-      order="year desc, month desc"
++      order="year desc, month asc"
+      },
+     R = z_search:search_result(Q, OffsetLimit, Context),
+-    Result = [ [{month_as_date, {{z_convert:to_integer(Y),z_convert:to_integer(M),1},{0,0,0}}}|Rest]
++    Result = [ [{month_as_date, {{Y,M,1},{0,0,0}}}|Rest]
+                || Rest = [{year, Y}, {month, M}, {count, _}] <- R#search_result.result],
+     #search_result{result=z_utils:group_proplists(year, Result)};
+ 
+diff -r 0c1394664afa priv/sites/default/default.erl
+--- a/priv/sites/default/default.erl	Sat Sep 25 11:22:59 2010 +0200
++++ b/priv/sites/default/default.erl	Sun Sep 26 19:03:59 2010 +0200
+@@ -53,7 +53,7 @@
+        {page_about,
+         text,
+         [{title, <<"About this blog">>},
+-         {summary, <<"This is your blog. It would be wise to type some text here on what you will be writing about. Ofcourse, this page is just a demo page and can be deleted just as well.">>}]
++         {summary, <<"This is your blog!! It would be wise to type some text here on what you will be writing about. Ofcourse, this page is just a demo page and can be deleted just as well.">>}]
+        },
+ 
+        {page_contact,
+diff -r 0c1394664afa priv/sites/default/lib/css/zp-project.css
+--- a/priv/sites/default/lib/css/zp-project.css	Sat Sep 25 11:22:59 2010 +0200
++++ b/priv/sites/default/lib/css/zp-project.css	Sun Sep 26 19:03:59 2010 +0200
+@@ -237,6 +237,10 @@
+ 	margin: 0 0 18px 0;
+ }	
+ 
++    .simple-list ul {
++	    margin-left: 9px;
++    }
++
+ 	.simple-list li a {
+ 		font-size: 12px;	
+ 	}
+@@ -424,4 +428,26 @@
+ 			font-size: 12px;
+ 			color: #666;
+ 			line-height: 18px;
+-		}
+\ No newline at end of file
++		}
++
++
++/* Inline list
++---------------------------------------------------------- */
++li a.caption {
++    font-weight: bold;
++}
++
++.inline-list {
++	margin: 0 0 18px 0;
++    clear: both;
++}	
++
++    .inline-list li {
++        float: left;
++        margin-right: 4px;
++    }
++
++
++	.inline-list li a {
++		font-size: 12px;	
++	}
 diff -r 0c1394664afa priv/sites/default/templates/_article_summary.tpl
 --- a/priv/sites/default/templates/_article_summary.tpl	Sat Sep 25 11:22:59 2010 +0200
-+++ b/priv/sites/default/templates/_article_summary.tpl	Sat Sep 25 18:02:59 2010 +0200
++++ b/priv/sites/default/templates/_article_summary.tpl	Sun Sep 26 19:03:59 2010 +0200
 @@ -18,7 +18,7 @@
  		{% endifequal %}
  			
@@ -362,9 +479,57 @@ diff -r 0c1394664afa priv/sites/default/templates/_article_summary.tpl
 -{% endif %}	
 \ No newline at end of file
 +{% endif %}	
+diff -r 0c1394664afa priv/sites/default/templates/_sidebar.tpl
+--- a/priv/sites/default/templates/_sidebar.tpl	Sat Sep 25 11:22:59 2010 +0200
++++ b/priv/sites/default/templates/_sidebar.tpl	Sun Sep 26 19:03:59 2010 +0200
+@@ -23,28 +23,25 @@
+ 	{% endif %}
+ 	
+ 	<h2>Archive</h2>
+-	<ul class="simple-list">
++    <ul class="simple-list">
+ 		{% for year, months in m.search[{archive_year_month cat='article'}] %}
+-	    	<li>
+-	        	<a href="{% url archives_y year=year %}">{{ year }}</a>
+-		        <ul>
+-	    	        {% for row in months %}
+-	        	    	<li><a href="{% url archives_m year=year month=row.month %}">{{ row.month_as_date|date:"F" }}</a> ({{ row.count }})</li>
+-		           	{% endfor %}
+-	    	    </ul>
+-	    	</li>
++	    	<li><a class="caption" href="{% url archives_y year=year %}">{{ year }}</a>
++                <ul>
++                    {% for row in months %}
++                    <li><a href="{% url archives_m year=year month=row.month %}">{{ row.month_as_date|date:"F" }}</a> ({{ row.count }}){% if not forloop.last %},{% else %}.{% endif %}</li>
++                    {% endfor %}
++                </ul>
++            </li>
+ 	    {% endfor %}
+-	</ul>
++    </ul>
+ 	
+-	{% if show_cloud %}
+-		<h2>Keywords</h2>
+-		<ul class="simple-list">
+-		    {% for id, count in m.search[{keyword_cloud cat='article'}] %}
+-		    	<li><a href="{{ m.rsc[id].page_url }}">{{ m.rsc[id].title }}</a> ({{ count }})</li>
+-		    {% endfor %}
+-		</ul>
+-	{% endif %}
+-	
++    <h2>Keywords</h2>
++    <ul class="inline-list clearfix">
++	    {% for id, count in m.search[{keyword_cloud cat='article'}] %}
++        <li><a href="{{ m.rsc[id].page_url }}">{{ m.rsc[id].title }}</a> ({{ count }}){% if not forloop.last %},{% else %}.{% endif %}</li>
++	    {% endfor %}
++    </ul>
++
+ {% endcache %}
+ 
+ {% if m.rsc[id].is_editable %}
 diff -r 0c1394664afa priv/sites/default/templates/archives.tpl
 --- a/priv/sites/default/templates/archives.tpl	Sat Sep 25 11:22:59 2010 +0200
-+++ b/priv/sites/default/templates/archives.tpl	Sat Sep 25 18:02:59 2010 +0200
++++ b/priv/sites/default/templates/archives.tpl	Sun Sep 26 19:03:59 2010 +0200
 @@ -16,8 +16,8 @@
  		
  		{% endfor %}
@@ -379,7 +544,7 @@ diff -r 0c1394664afa priv/sites/default/templates/archives.tpl
 +{% endblock %}
 diff -r 0c1394664afa priv/sites/default/templates/by_keyword.tpl
 --- a/priv/sites/default/templates/by_keyword.tpl	Sat Sep 25 11:22:59 2010 +0200
-+++ b/priv/sites/default/templates/by_keyword.tpl	Sat Sep 25 18:02:59 2010 +0200
++++ b/priv/sites/default/templates/by_keyword.tpl	Sun Sep 26 19:03:59 2010 +0200
 @@ -8,13 +8,13 @@
  
  {% block content %}
@@ -398,7 +563,7 @@ diff -r 0c1394664afa priv/sites/default/templates/by_keyword.tpl
  
 diff -r 0c1394664afa priv/sites/default/templates/home.tpl
 --- a/priv/sites/default/templates/home.tpl	Sat Sep 25 11:22:59 2010 +0200
-+++ b/priv/sites/default/templates/home.tpl	Sat Sep 25 18:02:59 2010 +0200
++++ b/priv/sites/default/templates/home.tpl	Sun Sep 26 19:03:59 2010 +0200
 @@ -7,7 +7,7 @@
  	{% if m.rsc[id].is_featured %}
  	
@@ -410,7 +575,7 @@ diff -r 0c1394664afa priv/sites/default/templates/home.tpl
  			<figure class="image-wrapper block-level-image">
 diff -r 0c1394664afa src/support/z_datamodel.erl
 --- a/src/support/z_datamodel.erl	Sat Sep 25 11:22:59 2010 +0200
-+++ b/src/support/z_datamodel.erl	Sat Sep 25 18:02:59 2010 +0200
++++ b/src/support/z_datamodel.erl	Sun Sep 26 19:03:59 2010 +0200
 @@ -35,33 +35,26 @@
  -include_lib("zotonic.hrl").
  
@@ -463,7 +628,31 @@ diff -r 0c1394664afa src/support/z_datamodel.erl
      ok.
  
  
-@@ -163,7 +156,20 @@
+@@ -128,11 +121,12 @@
+                 {ok, Id} ->
+                     case m_rsc:p(Id, installed_by, Context) of
+                         Module ->
++                            NewProps = update_new_props(Module, Id, Props, Context),
++                            m_rsc:update(Id, [{managed_props, z_html:escape_props(Props)} | NewProps], Context),
+                             {ok};
+                         _ ->
+                             %% Resource exists but is not installed by us.
+-                            Msg = io_lib:format("Resource '~p' (~p) exists but is not managed by Zotonic.", [Name, Id]),
+-                            ?zInfo(Msg, Context),
++                            ?zInfo(io_lib:format("Resource '~p' (~p) exists but is not managed by ~p.", [Name, Id, Module]), Context),
+                             {ok}
+                     end;
+                 {error, {unknown_rsc, _}} ->
+@@ -153,7 +147,7 @@
+                     {Result, NewNames} = case lists:member(Name, ManagedNames) of
+                                              false ->
+                                                  Props1 = [{name, Name}, {category_id, CatId},
+-                                                           {installed_by, Module}, {managed_props, Props}] ++ Props,
++                                                           {installed_by, Module}, {managed_props, z_html:escape_props(Props)}] ++ Props,
+                                                  Props2 = case proplists:get_value(is_published, Props1) of
+                                                               undefined -> [{is_published, true} | Props1];
+                                                               _ -> Props1
+@@ -163,7 +157,20 @@
                                                                _ -> Props2
                                                            end,
                                                   ?zInfo(io_lib:format("Creating new resource '~p'", [Name]), Context),
@@ -485,7 +674,45 @@ diff -r 0c1394664afa src/support/z_datamodel.erl
                                               true ->
                                                   ?zInfo(io_lib:format("Resource '~p' was deleted", [Name]), Context),
                                                   {{ok}, ManagedNames}
-@@ -213,6 +219,11 @@
+@@ -177,6 +184,37 @@
+             {ok}
+     end.
+ 
++update_new_props(Module, Id, NewProps, Context) ->
++    PreviousProps = m_rsc:p(Id, managed_props, Context),
++    lists:foldl(fun({K, V}, Props) ->
++                        case m_rsc:p(Id, K, Context) of
++                            V ->
++                                %% New value == current value
++                                Props;
++                            DbVal ->
++                                case proplists:get_value(K, PreviousProps) of 
++                                    DbVal ->
++                                        %% New value in NewProps, unchanged in DB
++                                        [{K,V} | Props];
++                                    PrevVal when is_binary(DbVal) ->
++                                        %% Compare with converted to list value
++                                        case z_convert:to_list(DbVal) of
++                                            V ->
++                                                Props;
++                                            _ ->
++                                                %% Changed by someone else
++                                                ?zInfo(io_lib:format("~p: ~p of ~p changed in database (~p != ~p), not updating.", [Module, K, Id, DbVal, PrevVal]), Context),
++                                                Props
++                                        end;
++                                    PrevVal2 ->
++
++                                        %% Changed by someone else
++                                        ?zInfo(io_lib:format("~p: ~p of ~p changed in database (~p != ~p), not updating.", [Module, K, Id, DbVal, PrevVal2]), Context),
++                                        Props
++                                end
++                        end
++                end, [], NewProps).
++
+ 
+ manage_predicate_validfor(_Id, [], _Context) ->
+     ok;
+@@ -213,6 +251,11 @@
  map_prop({file, Filepath}, _Context) ->
      {ok, Txt} = file:read_file(Filepath),
      Txt;
