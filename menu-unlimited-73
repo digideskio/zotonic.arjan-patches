@@ -1,0 +1,482 @@
+# HG changeset patch
+# Parent 4ae5c073f4f935a8914d046e2cb941d3ae032566
+
+diff --git a/modules/mod_menu/filters/filter_menu_flat.erl b/modules/mod_menu/filters/filter_menu_flat.erl
+new file mode 100644
+--- /dev/null
++++ b/modules/mod_menu/filters/filter_menu_flat.erl
+@@ -0,0 +1,24 @@
++%% @author Arjan Scherpenisse <arjan@scherpenisse.net>
++%% @copyright 2011 Arjan Scherpenisse
++%% @doc Get a "flat" of menu parents
++
++%% Copyright 2010 Marc Worrell
++%%
++%% Licensed under the Apache License, Version 2.0 (the "License");
++%% you may not use this file except in compliance with the License.
++%% You may obtain a copy of the License at
++%% 
++%%     http://www.apache.org/licenses/LICENSE-2.0
++%% 
++%% Unless required by applicable law or agreed to in writing, software
++%% distributed under the License is distributed on an "AS IS" BASIS,
++%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++%% See the License for the specific language governing permissions and
++%% limitations under the License.
++
++-module(filter_menu_flat).
++-export([menu_flat/2]).
++
++
++menu_flat(Menu, _Context) ->
++    mod_menu:menu_flat(Menu).
+diff --git a/modules/mod_menu/mod_menu.erl b/modules/mod_menu/mod_menu.erl
+--- a/modules/mod_menu/mod_menu.erl
++++ b/modules/mod_menu/mod_menu.erl
+@@ -31,7 +31,9 @@
+     get_menu/1,
+     get_menu/2,
+     set_menu/3,
+-    observe_menu_get_rsc_ids/2
++    observe_menu_get_rsc_ids/2,
++    test/0,
++    menu_flat/1
+ ]).
+ 
+ 
+@@ -126,3 +128,49 @@
+ %% @doc Save the current menu.
+ set_menu(Id, Menu, Context) ->
+     m_rsc:update(Id, [{menu, Menu}], Context).
++
++
++
++menu_flat(undefined) ->
++    [];
++menu_flat(<<>>) ->
++    [];
++menu_flat(X) ->
++    menu_flat(X, [1], []).
++
++menu_flat([], _Path, Acc) ->
++    lists:reverse(Acc);
++menu_flat([ {MenuId, []} | Rest], [Idx|PR], Acc ) ->
++
++    [ {MenuId, [Idx|PR], undefined} ] 
++        ++ menu_flat(Rest, [Idx+1|PR], [])
++        ++  Acc;
++menu_flat([ {MenuId, Children} | Rest], [Idx|PR], Acc ) ->
++
++    [ {MenuId, [Idx|PR], down} ] 
++        ++ menu_flat(Children, [1,Idx|PR], []) 
++        ++ [{undefined, undefined, up}]
++        ++ menu_flat(Rest, [Idx+1|PR], [])
++        ++  Acc.
++
++%%  111  [1]
++%%  - 44   [1,1]
++%%  - - 555  [1,1,1]
++%%  - - 666  [1,1,2]
++%%  222  [2]
++%%  - 333  [2,1]
++
++test() ->
++
++    [
++     {111, [1], down },
++     {444, [1,1], down},
++     {555, [1,1,1], undefined},
++     {666, [2,1,1], undefined},
++     {undefined, undefined, up},
++     {undefined, undefined, up},
++     {222, [2], down},
++     {333, [1,2], undefined},
++     {undefined, undefined, up}
++    ]
++        = menu_flat([{111, [{444, [{555, []}, {666, []} ]}]}, {222, [{333, []}]}]).
+diff --git a/modules/mod_menu/resources/resource_menu_admin_menu.erl b/modules/mod_menu/resources/resource_menu_admin_menu.erl
+--- a/modules/mod_menu/resources/resource_menu_admin_menu.erl
++++ b/modules/mod_menu/resources/resource_menu_admin_menu.erl
+@@ -20,160 +20,98 @@
+ -author("Marc Worrell <marc@worrell.nl>").
+ 
+ -export([
+-    event/2
++    event/2,
++    test/0
+ ]).
+ 
++-include("zotonic.hrl").
+ 
+-event({drop, {dragdrop, DragTag, _, _DragEltId}, {dragdrop, [MenuId|DropTag], _, _DropEltId}}, Context) ->
+-    Menu  = mod_menu:get_menu(MenuId, Context),
+-    Menu1 = handle_drop(Menu, DragTag, DropTag),
+-    mod_menu:set_menu(MenuId, Menu1, Context),
+-    Html = z_template:render("_admin_menu_menu_view.tpl", [{menu, Menu1}, {id, MenuId}], Context),
++event({drop, {dragdrop, ["new", Id], _, _DragEltId}, {dragdrop, [MenuId, "first"], _, _DropEltId}}, Context) ->
++    mod_menu:set_menu(MenuId, [{Id, []}], Context),
++    Html = z_template:render("_admin_menu_menu_view.tpl", [{id, MenuId}], Context),
+     z_render:update("menu-editor", Html, Context);
+ 
++event({drop, {dragdrop, DragTag, _, _DragEltId}, {dragdrop, [MenuId, "before", TP], _, _DropEltId}}, Context) ->
++    TargetPath = lists:reverse(TP),
++    Menu  = mod_menu:get_menu(MenuId, Context),
++    {Menu1, MenuItem} = case DragTag of
++                            ["new", NewId] ->
++                                {Menu, {NewId, []}};
++                            Path ->
++                                {delete_path(Menu, Path), get_menuitem(Menu, lists:reverse(Path))}
++                        end,
++    Menu2 = insert_menuitem(Menu1, MenuItem, TargetPath),
++    mod_menu:set_menu(MenuId, Menu2, Context),
++    Html = z_template:render("_admin_menu_menu_view.tpl", [{id, MenuId}], Context),
++    z_render:update("menu-editor", Html, Context);
++
++event({drop, {dragdrop, DragTag, _, _DragEltId}, {dragdrop, [MenuId, "on", TargetPath], _, _DropEltId}}, Context) ->
++    event({drop, {dragdrop, DragTag, x, x}, {dragdrop, [MenuId, "before", [1|TargetPath]], x, x}}, Context);
++
+ event({postback, {delete, Props}, _TriggerId, _TargetId}, Context) ->
+-    Id = proplists:get_value(id, Props),
+-    Menu = mod_menu:get_menu(Id, Context),
+-    Menu1 = case proplists:get_value(item, Props) of
+-        [Nr] -> 
+-            remove_nth(Nr, Menu);
+-        [Nr,SubNr] ->
+-            {MenuId, SubMenu}  = lists:nth(Nr, Menu),
+-            SubMenu1 = remove_nth(SubNr, SubMenu),
+-            set_nth(Nr, {MenuId, SubMenu1}, Menu)
+-    end,
+-    mod_menu:set_menu(Id, Menu1, Context),
+-    Html = z_template:render("_admin_menu_menu_view.tpl", [{menu, Menu1}, {id, Id}], Context),
++    MenuId = proplists:get_value(menu_id, Props),
++    Path = lists:reverse(proplists:get_value(path, Props)),
++    Menu = mod_menu:get_menu(MenuId, Context),
++    Menu1 = delete_path(Menu, Path),
++    mod_menu:set_menu(MenuId, Menu1, Context),
++    Html = z_template:render("_admin_menu_menu_view.tpl", [{id, MenuId}], Context),
+     z_render:update("menu-editor", Html, Context);
+ 
+ event(_Event, Context) ->
+     Context.
+ 
+ 
+-%% @doc Handle the drop of an id on top of a menu item.
+-handle_drop(Menu, ["new", Id], ["top"]) when is_integer(Id) ->
+-    [ {Id, []} | Menu ];
++delete_path(Menu, Path) ->
++    delete_path(Menu, Path, []).
++delete_path([_|Rest], [1], Acc) ->
++    lists:reverse(Acc) ++ Rest;
++delete_path([Item|Rest], [Idx], Acc) ->
++    delete_path(Rest, [Idx-1], [Item|Acc]);
++delete_path([{Id,SubMenu}|Rest], [1|Path], Acc) ->
++    lists:reverse(Acc)
++        ++ [{Id, delete_path(SubMenu, Path)} | Rest];
++delete_path([Item|Menu], [Idx|Path], Acc) ->
++    delete_path(Menu, [Idx-1|Path], [Item|Acc]).
+ 
+-%% drag new item to a main-menu-item
+-handle_drop(Menu, ["new", Id], [DropNr]) when is_integer(Id), is_integer(DropNr) ->
+-    {DropId, DropSubMenu} = lists:nth(DropNr, Menu),
+-    set_nth(DropNr, {DropId, [Id | DropSubMenu]}, Menu);
+ 
+-%% drag new item to a sub-menu-item
+-handle_drop(Menu, ["new", Id], [DropNr, DropSubNr]) when is_integer(Id), is_integer(DropNr), is_integer(DropSubNr) ->
+-    {DropId, DropSubMenu} = lists:nth(DropNr, Menu),
+-    DropSubMenu1 = after_nth(DropSubNr, Id, DropSubMenu),
+-    set_nth(DropNr, {DropId, DropSubMenu1}, Menu);
++get_menuitem([Item|_Menu], [1]) ->
++    Item;
++get_menuitem([_Item|Menu], [Idx]) ->
++    get_menuitem(Menu, [Idx-1]);
++get_menuitem([{_, SubMenu}|_Rest], [1|PathRest]) ->
++    get_menuitem(SubMenu, PathRest);
++get_menuitem([_|Rest], [Idx|PathRest]) ->
++    get_menuitem(Rest, [Idx-1|PathRest]).
+ 
+-% drag main menu to top
+-handle_drop(Menu, [Nr], ["top"]) when is_integer(Nr) ->
+-    {Id, Sub} = lists:nth(Nr, Menu),
+-    Menu1 = remove_nth(Nr, Menu),
+-    [ {Id, Sub} | Menu1 ];
+ 
+-% drag sub-menu-item to top
+-handle_drop(Menu, [Nr, SubNr], ["top"]) when is_integer(Nr), is_integer(SubNr) ->
+-    {Id, SubMenu} = lists:nth(Nr, Menu),
+-    SubId = lists:nth(SubNr, SubMenu),
+-    SubMenu1 = remove_nth(SubNr, SubMenu),
+-    [{SubId, []} | set_nth(Nr, {Id,SubMenu1}, Menu) ];
++insert_menuitem(Menu, Item, DestPath) ->
++    insert_menuitem(Menu, Item, DestPath, []).
++insert_menuitem(Menu, Item, [1], Acc) ->
++    lists:reverse(Acc) ++ [Item | Menu];
++insert_menuitem([First|Rest], Item, [Idx], Acc) ->
++    insert_menuitem(Rest, Item, [Idx-1], [First|Acc]);
++insert_menuitem([{Id, SubMenu} | MenuRest], Item, [1|Path], Acc) ->
++    lists:reverse(Acc) 
++        ++ [{Id, insert_menuitem(SubMenu, Item, Path, [])} | MenuRest];
++insert_menuitem([MenuItem|MenuRest], Item, [Idx|Path], Acc) ->
++    insert_menuitem(MenuRest, Item, [Idx-1|Path], [MenuItem|Acc]).
+ 
+-% Menu item "after" another menu item
+-handle_drop(Menu, [Nr], ["after", DropNr]) when is_integer(Nr), is_integer(DropNr) ->
+-    DragMenu = lists:nth(Nr, Menu),
+-    Menu1 = remove_nth(Nr, Menu),
+-    case Nr > DropNr of
+-        true -> after_nth(DropNr, DragMenu, Menu1);
+-        false -> after_nth(DropNr-1, DragMenu, Menu1)
+-    end;
+ 
+-% Menu item "after" another menu item
+-handle_drop(Menu, ["new", Id], ["after", DropNr]) when is_integer(DropNr) ->
+-    DragMenu = {Id, []},
+-    after_nth(DropNr, DragMenu, Menu);
++test() ->
++    [foo] = insert_menuitem([], foo, [1]),
++    [foo, bar] = insert_menuitem([bar], foo, [1]),
++    [bar, foo, baz] = insert_menuitem([bar, baz], foo, [2]),
++    [bar, baz, foo] = insert_menuitem([bar, baz], foo, [3]),
++    [{x, [foo]}, {y, []}] = insert_menuitem([{x, []}, {y, []}], foo, [1, 1]),
++    [{x, []}, {y, [foo]}] = insert_menuitem([{x, []}, {y, []}], foo, [2, 1]),
++    [{x, []}, {y, [{z, [bleh, foo]}]}] = insert_menuitem([{x, []}, {y, [{z, [bleh]}]}], foo, [2, 1, 2]),
++    
++    [b] = delete_path([a, b], [1]),
++    [a] = delete_path([a, b], [2]),
++    
++    [a, {b, []}, c] = delete_path([a, {b, [x]}, c], [2, 1]),
++    [a, {b, [x]}, c] = delete_path([a, {b, [x,y]}, c], [2, 2]).
++    
+ 
+-% Sub menu item "after" another main-menu item
+-handle_drop(Menu, [Nr, SubNr], ["after", DropNr]) when is_integer(Nr), is_integer(DropNr) ->
+-    {DragId, DragSubMenu} = lists:nth(Nr, Menu),
+-    DragSubId = lists:nth(SubNr, DragSubMenu),
+-    Menu1 = set_nth(Nr, {DragId, remove_nth(SubNr, DragSubMenu)}, Menu),
+-    after_nth(DropNr, {DragSubId, []}, Menu1);
++%%    [a, b] = move_menuitem([b, a], [1], [2]).
+     
+-% drag sub-menu-item to main-menu-item
+-handle_drop(Menu, [Nr, SubNr], [DropNr]) when is_integer(Nr), is_integer(SubNr), is_integer(DropNr)->
+-    {Id, SubMenu} = lists:nth(Nr, Menu),
+-    SubId = lists:nth(SubNr, SubMenu),
+-    % Remove the dragged item from its submenu
+-    SubMenu1 = remove_nth(SubNr, SubMenu),
+-    Menu1 = set_nth(Nr, {Id,SubMenu1}, Menu),
+-    % Add the item to the submenu of DropNr
+-    {DropId, DropSubMenu} = lists:nth(DropNr, Menu1),
+-    set_nth(DropNr, {DropId, [SubId | DropSubMenu]}, Menu1);
+-
+-% drag sub-menu-item to sub-menu-item in same menu but below the old position
+-handle_drop(Menu, [Nr, SubNr], [Nr, DropSubNr]) when is_integer(Nr), is_integer(SubNr), DropSubNr > SubNr ->
+-    {Id, SubMenu} = lists:nth(Nr, Menu),
+-    SubId = lists:nth(SubNr, SubMenu),
+-    DropSubMenu1 = after_nth(DropSubNr-1, SubId, remove_nth(SubNr, SubMenu)),
+-    set_nth(Nr, {Id, DropSubMenu1}, Menu);
+-
+-% drag sub-menu-item to sub-menu-item
+-handle_drop(Menu, [Nr, SubNr], [DropNr, DropSubNr]) when is_integer(Nr), is_integer(SubNr), is_integer(DropNr)->
+-    {Id, SubMenu} = lists:nth(Nr, Menu),
+-    SubId = lists:nth(SubNr, SubMenu),
+-    % Remove the dragged item from its submenu
+-    SubMenu1 = remove_nth(SubNr, SubMenu),
+-    Menu1 = set_nth(Nr, {Id,SubMenu1}, Menu),
+-    % Add the item to the submenu of DropNr
+-    {DropId, DropSubMenu} = lists:nth(DropNr, Menu1),
+-    DropSubMenu1 = after_nth(DropSubNr, SubId, DropSubMenu),
+-    set_nth(DropNr, {DropId, DropSubMenu1}, Menu1);
+-
+-% drag main-menu to another main-menu
+-handle_drop(Menu, [Nr], [DropNr]) when is_integer(Nr), is_integer(DropNr) ->
+-    {DragId, DragSub} = lists:nth(Nr, Menu),
+-    {DropId, DropSub} = lists:nth(DropNr, Menu),
+-    NewSub = [DragId | DragSub ] ++ DropSub,
+-    Menu1 = set_nth(DropNr, {DropId, NewSub}, Menu),
+-    remove_nth(Nr, Menu1);
+-
+-
+-
+-% drag main menu to sub-menu - refuse
+-handle_drop(Menu, _From, _To) ->
+-    Menu.
+-
+-
+-
+-remove_nth(Nr, List) ->
+-    remove_nth(Nr, List, []).
+-
+-remove_nth(_Nr, [], Acc) ->
+-    lists:reverse(Acc);
+-remove_nth(1, [_H|T], Acc) ->
+-    lists:reverse(Acc, T);
+-remove_nth(N, [H|T], Acc) ->
+-    remove_nth(N-1, T, [H|Acc]).
+-
+-
+-set_nth(Nr, Value, List) ->
+-    set_nth(Nr, Value, List, []).
+-
+-set_nth(_Nr, _Value, [], Acc) ->
+-    lists:reverse(Acc);
+-set_nth(1, Value, [_H|T], Acc) ->
+-    lists:reverse([Value|Acc], T);
+-set_nth(N, Value, [H|T], Acc) ->
+-    set_nth(N-1, Value, T, [H|Acc]).
+-
+-
+-after_nth(Nr, Value, List) ->
+-    after_nth(Nr, Value, List, []).
+-
+-after_nth(_Nr, Value, [], Acc) ->
+-    lists:reverse([Value | Acc]);
+-after_nth(1, Value, [H|T], Acc) ->
+-    lists:reverse([Value, H | Acc], T);
+-after_nth(N, Value, [H|T], Acc) ->
+-    after_nth(N-1, Value, T, [H|Acc]).
+-
+diff --git a/modules/mod_menu/scomps/scomp_menu_menu.erl b/modules/mod_menu/scomps/scomp_menu_menu.erl
+--- a/modules/mod_menu/scomps/scomp_menu_menu.erl
++++ b/modules/mod_menu/scomps/scomp_menu_menu.erl
+@@ -43,30 +43,9 @@
+ render(Params, _Vars, Context) ->
+     MenuId = m_rsc:rid(proplists:get_value(menu_id, Params, main_menu), Context),
+     Menu = mod_menu:get_menu(MenuId, Context),
+-    Traversal = traverse_menu(Menu, 1, 1, []),
+     Vars = [
+-        {menu, lists:reverse(Traversal)},
++        {menu, mod_menu:menu_flat(Menu)},
+         {menu_id, MenuId}
+         | Params
+     ],
+     {ok, z_template:render("_menu.tpl", Vars, Context)}.
+-
+-
+-
+-%% Traverse the menu, build a flat list that can be used for the template routines
+-traverse_menu([], _Nr, Depth, Acc) ->
+-    [ menu_close(Depth) | Acc ];
+-traverse_menu([{Id,[]}|Rest], Nr, Depth, Acc) ->
+-    traverse_menu(Rest, Nr+1, Depth, [menu_item(Id, Nr, Depth, false)|Acc]);
+-traverse_menu([{Id,Sub}|Rest], Nr, Depth, Acc) ->
+-    Acc1 = traverse_menu(Sub, 1, Depth+1, [menu_item(Id, Nr, Depth, true)|Acc]),
+-    traverse_menu(Rest, Nr+1, Depth, Acc1);
+-traverse_menu([Id|Rest], Nr, Depth, Acc) ->
+-    traverse_menu(Rest, Nr+1, Depth, [menu_item(Id, Nr, Depth, false)|Acc]).
+-
+-
+-menu_item(Id, Nr, Depth, HasSub) -> [Id, Depth, Nr, HasSub].
+-menu_close(Depth) -> [undefined, Depth, undefined, false].
+-
+-
+-
+diff --git a/modules/mod_menu/templates/_admin_menu_menu_view.tpl b/modules/mod_menu/templates/_admin_menu_menu_view.tpl
+--- a/modules/mod_menu/templates/_admin_menu_menu_view.tpl
++++ b/modules/mod_menu/templates/_admin_menu_menu_view.tpl
+@@ -1,19 +1,41 @@
+ <h3 class="above-list">Current menu</h3>
+ <ul class="short-list navigation-manager">
+-	<li id="top" class="header">
+-		Drop pages here or drop them on one of the menu items.
++
++	{% for mid, path, action in m.rsc[id].menu|menu_flat %}
++        {% with forloop.counter as c %}
++        {% if mid %}
++			<li id="{{ #before.c }}" class="line"> &nbsp; </li>
++			{% droppable id=#before.c tag=[id, "before", path] delegate="resource_menu_admin_menu" %}
++
++            <li class="header" id="{{ #menu.c }}">
++				<a href="#" class="clearfix">
++					<span class="grippy"><img src="/lib/images/grippy.png" alt="Drag me" /></span>
++					<span>{{ m.rsc[mid].title }}</span>
++					{% button text="x" style="float:right" action={postback postback={delete path=path menu_id=id} delegate="resource_menu_admin_menu"} %}
++				</a>
++            {% if action == "down" %}
++				<ul>
++            {% else %}
++                </li>
++            {% endif %}
++			{% draggable id=#menu.c tag=path  %}
++			{% droppable id=#menu.c tag=[id, "on", path] delegate="resource_menu_admin_menu" %}
++        {% else %}
++        </ul></li>
++        {% endif %}
++        {% endwith %}
++    {% empty %}
++    <li id="menu-first">
++		Drop a page here to start the menu.
+ 	</li>
++    {% droppable id="menu-first" tag=[id, "first"] delegate="resource_menu_admin_menu" %}
+ 
+-	{% for m_id, sub in m.rsc[id].menu %}
+-		{% with forloop.counter as m_nr %}
+-			<li class="header">
+-				
+-				<a id="{{ #menu.m_nr }}" href="#" class="clearfix">
+-					<span class="grippy"><img src="/lib/images/grippy.png" alt="Drag me" /></span>
+-					<span>{{ m.rsc[m_id].title }}</span>
+-					{% button text="x" style="float:right" action={postback postback={delete item=[m_nr] id=id} delegate="resource_menu_admin_menu"} %}
+-				</a>
+-				<ul>
++    {% endfor %}
++</ul>
++
++
++{#
++
+ 					{% for s_id in sub %}
+ 						{% with forloop.counter as s_nr %}
+ 							{% with m_nr|append:"-"|append:s_nr as m_s_nr %}
+@@ -34,9 +56,7 @@
+ 					{% endfor %}
+ 				</ul>
+ 			</li>
+-			<li id="{{ #after.m_nr }}" class="line">
+-				&nbsp;
+-			</li>
++			<li id="{{ #after.m_nr }}" class="line">&nbsp;</li>
+ 
+ 			{% droppable id=#menu.m_nr tag=[id, m_nr] delegate="resource_menu_admin_menu" %}
+ 			{% draggable id=#menu.m_nr tag=[m_nr] clone axis="y" delegate="resource_menu_admin_menu" %}
+@@ -44,6 +64,4 @@
+ 
+ 		{% endwith %}
+ 	{% endfor %}
+-</ul>
+-
+-{% droppable id="top" tag=[id, "top"] delegate="resource_menu_admin_menu" %}
++#}
+diff --git a/modules/mod_menu/templates/_menu.tpl b/modules/mod_menu/templates/_menu.tpl
+--- a/modules/mod_menu/templates/_menu.tpl
++++ b/modules/mod_menu/templates/_menu.tpl
+@@ -1,18 +1,21 @@
+ {% if menu %}
+ {% with id|menu_trail:menu_id as parents %}
+     <ul id="{{ id_prefix }}navigation" class="clearfix at-menu do_superfish">
+-    {% for mid,depth,nr,has_sub in menu %}
+-		{% if not mid %}{% if depth > 1 %}</ul></li>{% endif %}
+-		{% else %}
+-        	{% if nr == 1 and not forloop.first %}<ul{% if mid|member:path %} class="onpath"{% endif %}>{% endif %}
+-	        <li id="{{ id_prefix }}nav-item-{{nr}}" 
+-	            class="{% if is_first %}first {% endif %}{% if is_last %}last{% endif %}">
+-	            <a href="{{ m.rsc[mid].page_url }}" 
+-	               class="{{ m.rsc[mid].name }}{% if mid|member:parents %}{% if m.rsc[mid].name %} {% endif %}current{% endif %}">{{ m.rsc[mid].short_title|default:m.rsc[mid].title }}</a>
+-			{% if not has_sub %}</li>{% endif %}
+-		{% endif %}
++    {% for mid, path, action in menu %}
++        {% if mid %}
++        <li>
++            <a href="{{ m.rsc[mid].page_url }}" 
++               class="{{ m.rsc[mid].name }}{% if mid|member:parents %}{% if m.rsc[mid].name %} {% endif %}current{% endif %}">{{ m.rsc[mid].short_title|default:m.rsc[mid].title }}</a>
++            {% if action == "down" %}
++            <ul>
++            {% else %}
++            </li>
++            {% endif %}
++        {% else %}
++        </ul></li>
++        {% endif %}
++    {% if forloop.last %}{% include "_menu_extra.tpl" %}{% endif %}
+     {% endfor %}
+-    {% if forloop.last %}{% include "_menu_extra.tpl" %}{% endif %}
+     </ul>
+ {% endwith %}
+ {% endif %}
