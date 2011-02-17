@@ -1,5 +1,8 @@
 # HG changeset patch
 # Parent 4ae5c073f4f935a8914d046e2cb941d3ae032566
+mod_menu - support for unlimited nesting of menu items.
+
+Fixes issue #73.
 
 diff --git a/modules/mod_menu/filters/filter_menu_flat.erl b/modules/mod_menu/filters/filter_menu_flat.erl
 new file mode 100644
