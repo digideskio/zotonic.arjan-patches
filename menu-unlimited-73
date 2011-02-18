@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent 4ae5c073f4f935a8914d046e2cb941d3ae032566
+# Parent 09a70ed2de7147d1a9ff4fee1b2429fd0c93ee7c
 mod_menu - support for unlimited nesting of menu items.
 
 Fixes issue #73.
@@ -100,7 +100,7 @@ diff --git a/modules/mod_menu/mod_menu.erl b/modules/mod_menu/mod_menu.erl
 diff --git a/modules/mod_menu/resources/resource_menu_admin_menu.erl b/modules/mod_menu/resources/resource_menu_admin_menu.erl
 --- a/modules/mod_menu/resources/resource_menu_admin_menu.erl
 +++ b/modules/mod_menu/resources/resource_menu_admin_menu.erl
-@@ -20,160 +20,98 @@
+@@ -20,160 +20,113 @@
  -author("Marc Worrell <marc@worrell.nl>").
  
  -export([
@@ -124,13 +124,16 @@ diff --git a/modules/mod_menu/resources/resource_menu_admin_menu.erl b/modules/m
 +event({drop, {dragdrop, DragTag, _, _DragEltId}, {dragdrop, [MenuId, "before", TP], _, _DropEltId}}, Context) ->
 +    TargetPath = lists:reverse(TP),
 +    Menu  = mod_menu:get_menu(MenuId, Context),
-+    {Menu1, MenuItem} = case DragTag of
-+                            ["new", NewId] ->
-+                                {Menu, {NewId, []}};
-+                            Path ->
-+                                {delete_path(Menu, Path), get_menuitem(Menu, lists:reverse(Path))}
-+                        end,
-+    Menu2 = insert_menuitem(Menu1, MenuItem, TargetPath),
++    Menu2 = case DragTag of
++                ["new", NewId] ->
++                    insert_menuitem(Menu, {NewId, []}, TargetPath);
++                Path ->
++                    SourcePath = lists:reverse(Path),
++                    MenuItem = get_menuitem(Menu, SourcePath),
++                    Menu1 = delete_path(Menu, SourcePath),
++                    TargetPath1 = path_after_delete(TargetPath, SourcePath),
++                    insert_menuitem(Menu1, MenuItem, TargetPath1)
++            end,
 +    mod_menu:set_menu(MenuId, Menu2, Context),
 +    Html = z_template:render("_admin_menu_menu_view.tpl", [{id, MenuId}], Context),
 +    z_render:update("menu-editor", Html, Context);
@@ -234,6 +237,24 @@ diff --git a/modules/mod_menu/resources/resource_menu_admin_menu.erl b/modules/m
 -handle_drop(Menu, ["new", Id], ["after", DropNr]) when is_integer(DropNr) ->
 -    DragMenu = {Id, []},
 -    after_nth(DropNr, DragMenu, Menu);
++path_after_delete(Path, DeletePath) ->
++    path_after_delete(Path, DeletePath, []).
++path_after_delete([], _, Acc) ->
++    lists:reverse(Acc);
++path_after_delete(Path, [], Acc) ->
++    lists:reverse(Acc) ++ Path;
++path_after_delete([X|Rest], [Y|Rest2], Acc) when X > Y ->
++    path_after_delete(Rest, Rest2, [X-1|Acc]);
++path_after_delete([X|Rest], [_|Rest2], Acc) ->
++    path_after_delete(Rest, Rest2, [X|Acc]).
+ 
+-% Sub menu item "after" another main-menu item
+-handle_drop(Menu, [Nr, SubNr], ["after", DropNr]) when is_integer(Nr), is_integer(DropNr) ->
+-    {DragId, DragSubMenu} = lists:nth(Nr, Menu),
+-    DragSubId = lists:nth(SubNr, DragSubMenu),
+-    Menu1 = set_nth(Nr, {DragId, remove_nth(SubNr, DragSubMenu)}, Menu),
+-    after_nth(DropNr, {DragSubId, []}, Menu1);
++
 +test() ->
 +    [foo] = insert_menuitem([], foo, [1]),
 +    [foo, bar] = insert_menuitem([bar], foo, [1]),
@@ -242,21 +263,6 @@ diff --git a/modules/mod_menu/resources/resource_menu_admin_menu.erl b/modules/m
 +    [{x, [foo]}, {y, []}] = insert_menuitem([{x, []}, {y, []}], foo, [1, 1]),
 +    [{x, []}, {y, [foo]}] = insert_menuitem([{x, []}, {y, []}], foo, [2, 1]),
 +    [{x, []}, {y, [{z, [bleh, foo]}]}] = insert_menuitem([{x, []}, {y, [{z, [bleh]}]}], foo, [2, 1, 2]),
-+    
-+    [b] = delete_path([a, b], [1]),
-+    [a] = delete_path([a, b], [2]),
-+    
-+    [a, {b, []}, c] = delete_path([a, {b, [x]}, c], [2, 1]),
-+    [a, {b, [x]}, c] = delete_path([a, {b, [x,y]}, c], [2, 2]).
-+    
- 
--% Sub menu item "after" another main-menu item
--handle_drop(Menu, [Nr, SubNr], ["after", DropNr]) when is_integer(Nr), is_integer(DropNr) ->
--    {DragId, DragSubMenu} = lists:nth(Nr, Menu),
--    DragSubId = lists:nth(SubNr, DragSubMenu),
--    Menu1 = set_nth(Nr, {DragId, remove_nth(SubNr, DragSubMenu)}, Menu),
--    after_nth(DropNr, {DragSubId, []}, Menu1);
-+%%    [a, b] = move_menuitem([b, a], [1], [2]).
      
 -% drag sub-menu-item to main-menu-item
 -handle_drop(Menu, [Nr, SubNr], [DropNr]) when is_integer(Nr), is_integer(SubNr), is_integer(DropNr)->
@@ -268,7 +274,13 @@ diff --git a/modules/mod_menu/resources/resource_menu_admin_menu.erl b/modules/m
 -    % Add the item to the submenu of DropNr
 -    {DropId, DropSubMenu} = lists:nth(DropNr, Menu1),
 -    set_nth(DropNr, {DropId, [SubId | DropSubMenu]}, Menu1);
--
++    [b] = delete_path([a, b], [1]),
++    [a] = delete_path([a, b], [2]),
++    
++    [a, {b, []}, c] = delete_path([a, {b, [x]}, c], [2, 1]),
++    [a, {b, [x]}, c] = delete_path([a, {b, [x,y]}, c], [2, 2]).
++    
+ 
 -% drag sub-menu-item to sub-menu-item in same menu but below the old position
 -handle_drop(Menu, [Nr, SubNr], [Nr, DropSubNr]) when is_integer(Nr), is_integer(SubNr), DropSubNr > SubNr ->
 -    {Id, SubMenu} = lists:nth(Nr, Menu),
@@ -336,6 +348,8 @@ diff --git a/modules/mod_menu/resources/resource_menu_admin_menu.erl b/modules/m
 -after_nth(N, Value, [H|T], Acc) ->
 -    after_nth(N-1, Value, T, [H|Acc]).
 -
++%%    [a, b] = move_menuitem([b, a], [1], [2]).
++    
 diff --git a/modules/mod_menu/scomps/scomp_menu_menu.erl b/modules/mod_menu/scomps/scomp_menu_menu.erl
 --- a/modules/mod_menu/scomps/scomp_menu_menu.erl
 +++ b/modules/mod_menu/scomps/scomp_menu_menu.erl
@@ -396,9 +410,9 @@ diff --git a/modules/mod_menu/templates/_admin_menu_menu_view.tpl b/modules/mod_
 +				<ul>
 +            {% else %}
 +                </li>
++  			    {% droppable id=#menu.c tag=[id, "on", path] delegate="resource_menu_admin_menu" %}
 +            {% endif %}
 +			{% draggable id=#menu.c tag=path  %}
-+			{% droppable id=#menu.c tag=[id, "on", path] delegate="resource_menu_admin_menu" %}
 +        {% else %}
 +        </ul></li>
 +        {% endif %}
