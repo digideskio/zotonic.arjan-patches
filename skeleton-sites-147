@@ -7,7 +7,95 @@ skel site support for 'zotonic addsite'.
  - created install mechanism for default data
  - moved demo data from default site to src/install
  - created mechanism to add default menu structure
+ - added "-s <skel>" option to addsite
+ - updated documentation ZotonicCommands.txt
 
+diff --git a/doc/ZotonicCommands.txt b/doc/ZotonicCommands.txt
+--- a/doc/ZotonicCommands.txt
++++ b/doc/ZotonicCommands.txt
+@@ -10,11 +10,16 @@
+ this with built-in OS X CLI tools.  This is needed to traverse deeply
+ symlinked commands.
+ 
+-zotonic addsite [site_name]
+---------------------------
+-Create a new site with [site_name] as its name.  This new site will be based
+-on the current content of the default site.  It uses the default site as a
+-template or skeleton.
++
++zotonic addsite [options] <site_name>
++-------------------------------------
++Create a new site with [site_name] as its name.  This new site will be
++based on a so-called skeleton site. Currently there are two skeletons:
++'blog' and 'empty'. "blog" is the default. 
++
++"zotonic addsite -s empty yoursite" creates a new site called
++"yoursite" based on the skeleton called "empty".
++
+ 
+ zotonic copysite [site_name] [source_server]
+ --------------------------------------------
+@@ -28,6 +33,7 @@
+ retrieved from the [source_server].  It does, however, generate and output
+ a restore file in case this was run by accident and explains how to recover.
+ 
++
+ zotonic createdb [site_name]
+ ----------------------------
+ Create a database called zotonic_[site_name] with the basic setup in place to
+@@ -38,23 +44,29 @@
+ 
+ 	ALTER ROLE zotonic WITH CREATEDB
+ 
++
+ zotonic debug
+ -------------
+-Launch the Zotonic server interactively and get an EShell on the running
+-instance.  This is very similar to running ./start.sh.
++Launch the Zotonic server interactively and get an EShell on the
++running instance.  This command used to be called "./start.sh" in
++Zotonic 0.6 and earlier.
++
+ 
+ zotonic restart
+ ---------------
+ Restart the background Zotonic server instance.
+ 
++
+ zotonic shell
+ -------------
+ Connect to the background Zotonic server instance and provide and EShell.
+ 
++
+ zotonic sitedir [site_name]
+ ---------------------------
+ Get the absolute path for a site based on [site_name]
+ 
++
+ zotonic snapshot [site_name]
+ ----------------------------
+ Take a version control snapshot of [site_name] including its database content.
+@@ -63,15 +75,18 @@
+ filename for the SQL backup to make revision-based full site rollbacks
+ possible.
+ 
++
+ zotonic start
+ -------------
+ Start the background Zotonic server instance.
+ 
++
+ zotonic stop
+ ------------
+ Stop the background Zotonic server instance.
+ 
++
+ zotonic update
+ --------------
+ Update the server.  Compiles and loads any new code, flushes caches and
+-rescans all modules.
+\ No newline at end of file
++rescans all modules.
 diff --git a/modules/mod_menu/mod_menu.erl b/modules/mod_menu/mod_menu.erl
 --- a/modules/mod_menu/mod_menu.erl
 +++ b/modules/mod_menu/mod_menu.erl
@@ -245,7 +333,12 @@ rename from priv/sites/default/config.in
 rename to priv/skel/blog/config.in
 --- a/priv/sites/default/config.in
 +++ b/priv/skel/blog/config.in
-@@ -5,12 +5,12 @@
+@@ -1,16 +1,15 @@
+-% Configuration of the default zotonic site.
+-% Copy this file to 'config' and change the settings below.
++% Zotonic site configuration for %%SITE%%.
+ [
+     % This site is enabled or not.
      {enabled, true},
      
      % Atomic hostname, MUST be equal to the directory name of this site.
@@ -260,12 +353,13 @@ rename to priv/skel/blog/config.in
  
      % Aliases which should redirect to the primary hostname
      {hostalias, "www.example.com"},
-@@ -23,11 +23,14 @@
+@@ -22,12 +21,15 @@
+     {dbport, 5432},
      {dbuser, "zotonic"},
      {dbpassword, "zotonic"},
-     {dbdatabase, "zotonic"},
--    {dbschema, "public"},
-+    {dbschema, "zotonic"},
+-    {dbdatabase, "zotonic"},
++    {dbdatabase, "zotonic_%%SITE%%"},
+     {dbschema, "public"},
      
      % Password for the 'admin' user.
      {admin_password, "admin"},
@@ -621,16 +715,37 @@ deleted file mode 100644
 diff --git a/src/scripts/zotonic-addsite b/src/scripts/zotonic-addsite
 --- a/src/scripts/zotonic-addsite
 +++ b/src/scripts/zotonic-addsite
-@@ -20,44 +20,45 @@
+@@ -18,46 +18,64 @@
+ # usage zotonic-addsite [site_name]
+ #
  
++function usage {
++    echo "Usage: `basename $0` [options] <site_name>" 1>&2
++    echo 1>&2
++    echo "  -s <skel>   Skeleton site ('blog' or 'empty'; default 'blog')" 1>&2
++    echo 1>&2
++    #echo 1>&2
++    exit 1
++}
++
++SKEL="blog"
++while getopts "s:" optionName; do
++    case "$optionName" in
++        s) SKEL="$OPTARG"; shift; shift ;;
++        [?]) exit
++    esac
++done
++
++
  SITE=$1
++if [ ! $SITE ]; then
++    usage
++fi
  
 -if [ ! $SITE ]
 -  then
 -	echo USAGE: $0 [site_name] 1>&2
-+if [ ! $SITE ]; then
-+    echo USAGE: `basename $0` [site_name] 1>&2
- 	echo USAGE: See ZotonicCommands.txt 1>&2
+-	echo USAGE: See ZotonicCommands.txt 1>&2
 -  else
 -	if [ -e $SITES/$SITE ]
 -	  then
@@ -638,13 +753,16 @@ diff --git a/src/scripts/zotonic-addsite b/src/scripts/zotonic-addsite
 -	  else
 -		# Copy the default site as a template
 -		cp -R $SITES/default $SITES/$SITE
++if [ -e $SITES/$SITE ]; then
++	echo `basename $0`: cannot add site "\`$SITE'": $SITES/$SITE already exists 1>&2
 +    exit 1
 +fi
  
 -		# Remove duplicate module
 -		rm $SITES/$SITE/default.erl
-+if [ -e $SITES/$SITE ]; then
-+	echo `basename $0`: cannot add site "\`$SITE'": $SITES/$SITE already exists 1>&2
++SKELDIR="$ZOTONIC/priv/skel/$SKEL"
++if [ ! -e $SKELDIR ]; then
++	echo `basename $0`: skeleton site $SKEL does not exists 1>&2
 +    exit 1
 +fi
  
@@ -653,38 +771,34 @@ diff --git a/src/scripts/zotonic-addsite b/src/scripts/zotonic-addsite
 -		sed s/yoursite/$SITE/g \
 -			< $ZOTONIC_SCRIPTS/helpers/zotonic-addsite_module.sed.in \
 -			> $REFACTOR_MODULE
-+SKEL="blog"
++# Copy the default site as a template
++cp -pR $SKELDIR $SITES/$SITE
  
 -		# Refactor Site Module
 -		sed -f "$REFACTOR_MODULE" \
 -			< $SITES/default/default.erl \
 -			> $SITES/$SITE/$SITE.erl
-+SKELDIR="$ZOTONIC/priv/skel/$SKEL"
++cd $SITES/$SITE
  
 -		# Generate Site Config refactor script
 -		REFACTOR_CONFIG=`tempfile`
 -		sed s/yoursite/$SITE/g \
 -			< $ZOTONIC_SCRIPTS/helpers/zotonic-addsite_config.sed.in \
 -			> $REFACTOR_CONFIG
-+# Copy the default site as a template
-+cp -pR $SKELDIR $SITES/$SITE
++# move site module in place
++mv SITE.erl $SITE.erl
  
 -		# Refactor Site Config
 -		sed -f $REFACTOR_CONFIG \
 -			< $SITES/default/config.in \
 -			> $SITES/$SITE/config
-+cd $SITES/$SITE
++# move config in place
++mv config.in config
  
 -		# Make the new site
 -		make --silent --directory=$ZOTONIC
 -	fi
 -fi
-+# move site module in place
-+mv SITE.erl $SITE.erl
-+
-+# move config in place
-+mv config.in config
-+
 +FULLNAME=`getent passwd "$USER" | cut -d ':' -f 5|cut -d ',' -f 1`
 +
 +# simple key-value replace
