@@ -1,6 +1,8 @@
 # HG changeset patch
-# Parent 0bdd53c75a41dd8666affc46456bf5379744fd44
-Mailinglist separate page for previewing, sending and checking the mailing statistics.
+# Parent 122381d194f5d88827ae53ea741887cadaaac5ef
+Mailinglist separate page for previewing, sending and checking the
+mailing statistics.  Also allows scheduled sending of mailings when
+page becomes visible.
 
 diff --git a/modules/mod_admin/resources/resource_admin_edit.erl b/modules/mod_admin/resources/resource_admin_edit.erl
 --- a/modules/mod_admin/resources/resource_admin_edit.erl
@@ -15,6 +17,52 @@ diff --git a/modules/mod_admin/resources/resource_admin_edit.erl b/modules/mod_a
  ]).
  
  -include_lib("resource_html.hrl").
+diff --git a/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl b/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl
+--- a/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl
++++ b/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl
+@@ -30,22 +30,24 @@
+ 
+ render_action(TriggerId, TargetId, Args, Context) ->
+     Id = z_convert:to_integer(proplists:get_value(id, Args)),
++    ListId = z_convert:to_integer(proplists:get_value(list_id, Args)),
+     OnSuccess = proplists:get_all_values(on_success, Args),
+-    Postback = {dialog_mailing_page, Id, OnSuccess},
++    Postback = {dialog_mailing_page, Id, ListId, OnSuccess},
+ 	{PostbackMsgJS, _PickledPostback} = z_render:make_postback(Postback, click, TriggerId, TargetId, ?MODULE, Context),
+ 	{PostbackMsgJS, Context}.
+ 
+-event({postback, {dialog_mailing_page, Id, OnSuccess}, _TriggerId, _TargetId}, Context) ->
++event({postback, {dialog_mailing_page, Id, ListId, OnSuccess}, _TriggerId, _TargetId}, Context) ->
+ 	Vars = [
+-		{id, Id},
+-		{on_success, OnSuccess}
++            {id, Id},
++            {list_id, ListId},
++            {on_success, OnSuccess}
+ 	],
+-	z_render:dialog("Give e-mail address of recipient.", "_dialog_mailing_page.tpl", Vars, Context);
++	z_render:dialog("Confirm sending to mailinglist.", "_dialog_mailing_page.tpl", Vars, Context);
+ 
+ event({submit, {mailing_page, Args}, _TriggerId, _TargetId}, Context) ->
+ 	PageId = proplists:get_value(id, Args),
+ 	OnSuccess = proplists:get_all_values(on_success, Args),
+-	ListId = z_convert:to_integer(z_context:get_q("mailinglist_id", Context)),
++	ListId = z_convert:to_integer(z_context:get_q("list_id", Context)),
+ 	Name = m_rsc:p(ListId, name, Context),
+ 	Context1 = case Name == <<"mailinglist_test">> orelse z_acl:rsc_visible(PageId, z_acl:anondo(Context)) of
+ 		true -> 
+@@ -53,9 +55,7 @@
+ 			z_render:growl("The e-mails are being send...", Context);
+ 		false -> 
+ 			m_mailinglist:insert_scheduled(ListId, PageId, Context),
++            mod_signal:emit({update_mailinglist_scheduled, [{id, PageId}]}, Context),
+ 			z_render:growl("The mailing will be send when the page becomes visible.", Context)
+ 	end,
+-	Context2 = mod_mailinglist:update_scheduled_list(PageId, Context1),
+-	z_render:wire(OnSuccess, Context2).
+-
+-
++	z_render:wire(OnSuccess, Context1).
 diff --git a/modules/mod_mailinglist/dispatch/dispatch_mailinglist b/modules/mod_mailinglist/dispatch/dispatch_mailinglist
 --- a/modules/mod_mailinglist/dispatch/dispatch_mailinglist
 +++ b/modules/mod_mailinglist/dispatch/dispatch_mailinglist
@@ -39,7 +87,60 @@ diff --git a/modules/mod_mailinglist/dispatch/dispatch_mailinglist b/modules/mod
 diff --git a/modules/mod_mailinglist/mod_mailinglist.erl b/modules/mod_mailinglist/mod_mailinglist.erl
 --- a/modules/mod_mailinglist/mod_mailinglist.erl
 +++ b/modules/mod_mailinglist/mod_mailinglist.erl
-@@ -302,20 +302,8 @@
+@@ -34,7 +34,6 @@
+ 	observe_search_query/2,
+ 	observe_mailinglist_message/2,
+ 	event/2,
+-	update_scheduled_list/2,
+ 	datamodel/1,
+ 	page_attachments/2
+ ]).
+@@ -106,7 +105,7 @@
+ 
+ %% @doc Request confirmation of canceling this mailing.
+ event({postback, {dialog_mailing_cancel_confirm, Args}, _TriggerId, _TargetId}, Context) ->
+-	MailingId = proplists:get_value(mailinglist_id, Args),
++	MailingId = proplists:get_value(list_id, Args),
+ 	case z_acl:rsc_editable(MailingId, Context) of
+ 		true ->
+ 			z_render:dialog("Confirm mailing cancelation.", "_dialog_mailing_cancel_confirm.tpl", Args, Context);
+@@ -114,13 +113,13 @@
+ 			z_render:growl_error("You are not allowed to cancel this mailing.", Context)
+ 	end;
+ event({postback, {mailing_cancel, Args}, _TriggerId, _TargetId}, Context) ->
+-	MailingId = proplists:get_value(mailinglist_id, Args),
++	MailingId = proplists:get_value(list_id, Args),
+ 	PageId = proplists:get_value(page_id, Args),
+ 	case z_acl:rsc_editable(MailingId, Context) of
+ 		true ->
+ 			m_mailinglist:delete_scheduled(MailingId, PageId, Context),
+-			Context1 = update_scheduled_list(PageId, Context),
+-			z_render:growl("The mailing has been canceled.", Context1);
++            mod_signal:emit({update_mailinglist_scheduled, [{id, PageId}]}, Context),
++			z_render:growl("The mailing has been canceled.", Context);
+ 		false ->
+ 			z_render:growl_error("You are not allowed to cancel this mailing.", Context)
+ 	end;
+@@ -135,18 +134,8 @@
+             z_render:growl(Msg, "error", true, Context)
+     end.
+ 
+-%% @doc Update the list with the mailings scheduled for this page.
+-update_scheduled_list(Id, Context) ->
+-	Vars = [
+-		{id, Id},
+-		{scheduled, m_mailinglist:get_scheduled(Id, Context)}
+-	],
+-	Html = z_template:render("_mailinglist_scheduled.tpl", Vars, Context),
+-	z_render:update("mailinglist-scheduled", Html, Context).
+ 
+ 
+-	
+-
+ %%====================================================================
+ %% API
+ %%====================================================================
+@@ -302,20 +291,8 @@
      Recipients = m_mailinglist:get_enabled_recipients(ListId, Context),
      SubscribersOf = m_edge:subjects(ListId, subscriberof, Context),
      {Direct,Queued} = split_list(20, Recipients ++ SubscribersOf),
@@ -61,19 +162,46 @@ diff --git a/modules/mod_mailinglist/mod_mailinglist.erl b/modules/mod_mailingli
      ],
      
      [ send(true, Email, Options, Context) || Email <- Direct ],
+@@ -331,13 +308,19 @@
+         case z_convert:to_list(z_string:trim(Email)) of
+             [] -> skip;
+             Email1 ->
+-                Options1 = [{email,Email1}|Options],
+-
+                 Id = proplists:get_value(id, Options),
+-                Attachments = mod_mailinglist:page_attachments(Id, Context),
+-
+-                z_email_server:send(#email{queue=not(IsDirect), to=Email1,
+-	                        html_tpl={cat, "mailing_page.tpl"}, vars=Options1, attachments=Attachments}, Context)
++                ListId = proplists:get_value(list_id, Options),
++                %% check if not already sent
++                case m_mailinglist:already_sent(Email1, ListId, Id, Context) of
++                    true ->
++                        ?DEBUG("Already sent..."),
++                        %% already sent...
++                        ok;
++                    false ->
++                        Attachments = mod_mailinglist:page_attachments(Id, Context),
++                        z_email_server:send(#email{queue=not(IsDirect), to=Email1,
++                                                   html_tpl={cat, "mailing_page.tpl"}, vars=[{email,Email1}|Options], attachments=Attachments}, Context)
++                end
+         end.
+ 
+ 
 diff --git a/modules/mod_mailinglist/models/m_mailinglist.erl b/modules/mod_mailinglist/models/m_mailinglist.erl
 --- a/modules/mod_mailinglist/models/m_mailinglist.erl
 +++ b/modules/mod_mailinglist/models/m_mailinglist.erl
-@@ -51,6 +51,8 @@
+@@ -51,6 +51,9 @@
  	get_scheduled/2,
  	check_scheduled/1,
  
 +	get_email_from/2,
++    already_sent/4,
 +
  	init_tables/1
  ]).
  
-@@ -63,6 +65,10 @@
+@@ -63,6 +66,10 @@
     M#m{value=stats};
  m_find_value(Id, #m{value=stats}, Context) ->
     get_stats(Id, Context);
@@ -84,34 +212,61 @@ diff --git a/modules/mod_mailinglist/models/m_mailinglist.erl b/modules/mod_mail
  m_find_value(recipient, #m{value=undefined} = M, _Context) ->
     M#m{value=recipient};
  m_find_value(Id, #m{value=recipient}, Context) ->
-@@ -110,6 +116,23 @@
- 	{Count, Scheduled}.
- 
- 
+@@ -107,7 +114,26 @@
+ 							join rsc on id = page_id
+ 					where mailinglist_id = $1
+ 					order by publication_start", [Id], Context),
+-	{Count, Scheduled}.
++	{Count + length(m_edge:subjects(Id, subscriber_of, Context)), Scheduled}.
++
++
 +%% @doc Get the stats for all mailing lists which have been sent to a rsc (content_id)
 +%% @spec get_rsc_stats(int(), Context) -> [ {mailinglist_id::int(), statlist} ]
 +get_rsc_stats(Id, Context) ->
-+    Stats = [ {ListId, [{created, Created}, {total, Total}]} || 
-+                {ListId, Created, Total} <- z_db:q("select other_id, min(created) as sent_on, count(distinct(envelop_to)) from log_email where content_id = $1 group by other_id", [Id], Context)],
++    F = fun() ->
++                Stats = [ {ListId, [{created, Created}, {total, Total}]} || 
++                            {ListId, Created, Total} <- z_db:q("select other_id, min(created) as sent_on, count(distinct(envelop_to)) from log_email where content_id = $1 group by other_id", [Id], Context)],
++                %% merge in all mailer statuses
++                lists:foldl(fun({ListId, Status, Count}, St) ->
++                                    z_utils:prop_replace(ListId,
++                                                         [{z_convert:to_atom(Status), Count}|proplists:get_value(ListId, St, [])],
++                                                         St)
++                            end,
++                            Stats,
++                            z_db:q("select other_id, mailer_status, count(envelop_to) from log_email where content_id = $1 group by other_id, mailer_status", [Id], Context))
++        end,
++    z_depcache:memo(F, {mailinglist_stats, Id}, 5, [Id], Context). %% Cache a little while to prevent database DOS while mail is sending
 +
-+    %% merge in all mailer statuses
-+    lists:foldl(fun({ListId, Status, Count}, St) ->
-+                        z_utils:prop_replace(ListId,
-+                                             [{z_convert:to_atom(Status), Count}|proplists:get_value(ListId, St, [])],
-+                                             St)
-+                end,
-+                Stats,
-+                z_db:q("select other_id, mailer_status, count(distinct(envelop_to)) from log_email where content_id = $1 group by other_id, mailer_status", [Id], Context)).
-+
-+
-+
+ 
+ 
  %% @doc Fetch all enabled recipients from a list.
- get_enabled_recipients(ListId, Context) ->
- 	Emails = z_db:q("select email from mailinglist_recipient where mailinglist_id = $1 and is_enabled = true", [ListId], Context),
-@@ -365,6 +388,22 @@
+@@ -347,9 +373,9 @@
+ 
+ %% @doc Get the list of scheduled mailings for a page.
+ get_scheduled(Id, Context) ->
+-	z_db:q("select mailinglist_id
+-			from mailinglist_scheduled
+-			where page_id = $1", [Id], Context).
++	[ListId || {ListId} <- z_db:q("select mailinglist_id
++                			from mailinglist_scheduled
++                			where page_id = $1", [Id], Context)].
+ 
+ 
+ %% @doc Fetch the next scheduled mailing that is publicly visible, published and in the publication date range.
+@@ -365,6 +391,32 @@
  		limit 1", Context).
  
  
++already_sent(Email, ListId, Id, Context) ->
++    case m_rsc:p(ListId, name, Context) of
++        <<"mailinglist_test">> ->
++            false; %% test mailinglist allows duplicates
++        _X ->
++            ?DEBUG(_X),
++            z_convert:to_bool(z_db:q1("select true from log_email where other_id = $1 and content_id = $2 and envelop_to = $3 and mailer_status = 'sent'", [ListId, Id, Email], Context))
++    end.
++
++
 +%% @doc Get the "from" address used for this mailing list. Looks first in the mailinglist rsc for a ' mailinglist_reply_to' field; falls back to mod_emailer.email_from config variable.
 +get_email_from(ListId, Context) ->
 +    FromEmail = case m_rsc:p(ListId, mailinglist_reply_to, Context) of
@@ -271,11 +426,151 @@ diff --git a/modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl b/modules
 -</div>
 -{% endwith %}
  {% endblock %}
+diff --git a/modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl b/modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl
+new file mode 100644
+--- /dev/null
++++ b/modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl
+@@ -0,0 +1,81 @@
++{% extends "admin_edit_widget_std.tpl" %}
++
++{% block widget_title %}{_ Mailinglist status _}{% endblock %}
++{% block widget_show_minimized %}false{% endblock %}
++
++{% block widget_content %}
++
++{% with m.mailinglist.rsc_stats[id] as rsc_stats %}
++{% with m.mailinglist.scheduled[id] as scheduled %}
++
++{% if rsc_stats %}
++<p>{{ m.rsc[id].title }} {_ has been sent to the following lists: _}</p>
++{% else %}
++<p>{{ m.rsc[id].title }} {_ has never been sent yet. _}</p>
++{% endif %}
++
++		<ul class="short-list">
++			<li class="headers clearfix">
++				<span class="zp-45">{_ Title _}</span>
++				<span class="zp-10">{_ Recipients _}</span>
++				<span class="zp-10">{_ Sent on _}</span>
++				<span class="zp-25">{_ Statistics _}</span>
++				<span class="zp-10">{_ Actions _}</span>
++			</li>
++		{% for title, mid in m.search[{all_bytitle cat="mailinglist"}] %}
++            {% with m.mailinglist.stats[mid] as stats %}
++			<li id="mailinglist-{{ mid }}" class="clearfix">
++
++					<span class="zp-45">
++                        <a href="{% url admin_mailinglist_recipients id=mid %}">{{ title|default:"untitled" }}</a>
++                    </span>
++
++                    <span class="zp-10">{{ stats[1]|format_number }}</span>
++
++                    {% if rsc_stats[mid].created %}
++                    <span class="zp-10">
++                        <a href="{% url admin_log_email content=id other=mid severity=4 %}" title="{_ Click to view log entries _}">{{ rsc_stats[mid].created|date:"Y-m-d H:i" }}</a>
++                        {% if mid|member:scheduled %}{_ scheduled _}{% endif %}
++                    </span>
++					<span class="zp-25">
++                        {% if stats[1] > rsc_stats[mid].total %}
++                        <a href="{% url admin_log_email status='sent' content=id other=mid severity=4 %}" title="{_ Click to view log entries _}">{{ rsc_stats[mid].total|default:0 }} {_ processed _}</a>
++                        {% else %}
++                        <a href="{% url admin_log_email status='sent' content=id other=mid severity=4 %}" title="{_ Click to view log entries _}">{_ All processed _}</a>
++                        {% endif %}
++                        (<a href="{% url admin_log_email status='sent' content=id other=mid severity=4 %}" title="{_ Click to view log entries _}">{{ rsc_stats[mid].sent|default:0 }} {_ OK _}</a>,
++                         <a href="{% url admin_log_email status='bounce' content=id other=mid severity=4 %}" title="{_ Click to view log entries _}">{{ rsc_stats[mid].bounce|default:0 }} {_ bounced _}</a>,
++                         <a href="{% url admin_log_email status='error' content=id other=mid severity=4 %}" title="{_ Click to view log entries _}">{{ rsc_stats[mid].error|default:0 }} {_ error _}</a>)
++                    </span>
++
++                {% else %}
++                    <span class="zp-10">
++                        {% if mid|member:scheduled %}{_ scheduled _}{% endif %}
++                    </span>
++					<span class="zp-25">
++                        -
++                    </span>
++                {% endif %}
++
++					<span class="button-area">
++                        {% if mid|member:scheduled %}
++                                {% button text=_"cancel" postback={dialog_mailing_cancel_confirm list_id=mid page_id=id} delegate="mod_mailinglist"  %}
++                        {% else %}
++                                {% if stats[1] > rsc_stats[mid].total|default:0 %}
++                                {% button text=_"send mailing" action={dialog_mailing_page id=id list_id=mid} title=_"send to "|append:m.rsc[mid].title %}
++                                {% endif %}
++                        {% endif %}
++					</span>
++			</li>
++            {% endwith %}
++		{% empty %}
++			<li>
++				{_ No items found _}
++			</li>
++		{% endfor %}
++		</ul>
++<p>{_ (overview automatically refreshes) _}</p>
++
++{% endwith %}
++{% endwith %}
++{% endblock %}
+diff --git a/modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tpl b/modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tpl
+--- a/modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tpl
++++ b/modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tpl
+@@ -1,4 +1,4 @@
+-<p>{_ Are you sure you want to cancel the mailing to _} “{{ m.rsc[mailinglist_id].title }}”?</p>
+-	
+-{% button text=_"Cancel mailing" postback={mailing_cancel mailinglist_id=mailinglist_id page_id=page_id} action={dialog_close} %}
+-{% button text=_"Keep mailing" action={dialog_close} %}
+\ No newline at end of file
++<p>{_ Are you sure you want to cancel the mailing to _} “{{ m.rsc[list_id].title }}”?</p>
++
++{% button text=_"Cancel mailing" postback={mailing_cancel list_id=list_id page_id=page_id} action={dialog_close} %}
++{% button text=_"Keep mailing" action={dialog_close} %}
+diff --git a/modules/mod_mailinglist/templates/_dialog_mailing_page.tpl b/modules/mod_mailinglist/templates/_dialog_mailing_page.tpl
+--- a/modules/mod_mailinglist/templates/_dialog_mailing_page.tpl
++++ b/modules/mod_mailinglist/templates/_dialog_mailing_page.tpl
+@@ -1,18 +1,20 @@
++{% with m.mailinglist.rsc_stats[id] as rsc_stats %}
+ 
+-<p>{_ Select a mailing list to send the page _} {{ m.rsc[id].title }} {_ to: _}</p>
++<p>{_ Please confirm that you want to send the page _} {{ m.rsc[id].title }} {_ to _} {{ m.rsc[list_id].title }}</p>
++
++{% if rsc_stats[list_id].total > 0 %}
++<p><strong>{_ Please note: _}</strong> {_ It appears you have sent
++    this page once already to this list. If you send it again, only
++    the recipients that did not yet receive the mail will get it. As a
++    safety-caution, it is impossible to send the same page twice to
++    the same e-mail address. _}</p>
++
++{% endif %}
++
+ 
+ {% wire type="submit" id=#form postback={mailing_page id=id on_success=on_success} action={dialog_close} delegate=delegate %}
+ <form id="{{ #form }}" method="post" action="postback">
+-	<select name="mailinglist_id">
+-		<option value="" disabled="disabled">{_ Select mailing list _}</option>
+-		{% for title, id in m.search[{all_bytitle cat="mailinglist"}] %}
+-			{% ifnotequal m.rsc[id].name "mailinglist_test" %}
+-				<option value="{{ id }}" {% if not m.rsc[id].is_editable %}disabled="disabled"{% endif %}>{{ title }}</option>
+-			{% endifnotequal %}
+-		{% endfor %}
+-	</select>
+-	
+-	<div class="clear">&nbsp;</div>
++    <input type="hidden" name="list_id" value="{{ list_id }}" />
+ 
+ 	{% if not m.rsc[id].is_published %}
+ 		<p>{_ The mailing will be send after this page has been published. _}</p>
+@@ -25,3 +27,5 @@
+ 	{% button text=_"Send mailing" %}
+ 	{% button text=_"Cancel" action={dialog_close} %}
+ </form>
++
++{% endwith %}
 diff --git a/modules/mod_mailinglist/templates/admin_mailing_status.tpl b/modules/mod_mailinglist/templates/admin_mailing_status.tpl
 new file mode 100644
 --- /dev/null
 +++ b/modules/mod_mailinglist/templates/admin_mailing_status.tpl
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,29 @@
 +{% extends "admin_base.tpl" %}
 +
 +{% block title %}{_ Mailing status _} &mdash; {{ m.rsc[id].title }}{% endblock %}
@@ -295,13 +590,28 @@ new file mode 100644
 +
 +            <hr />
 +
-+            <div class="zp-100">
++            <div class="zp-100" id="mailing-status">
 +                {% include "_admin_mailing_status_overview.tpl" %}
 +            </div>
++
++            {% wire action={connect signal={log_email} action={update target="mailing-status" template="_admin_mailing_status_overview.tpl" id=id}} %}
++            {% wire action={connect signal={update_mailinglist_scheduled} action={update target="mailing-status" template="_admin_mailing_status_overview.tpl" id=id}} %}
 +
 +		</div>
 +	</div>
 +{% endblock %}
+diff --git a/modules/mod_mailinglist/templates/admin_mailinglist.tpl b/modules/mod_mailinglist/templates/admin_mailinglist.tpl
+--- a/modules/mod_mailinglist/templates/admin_mailinglist.tpl
++++ b/modules/mod_mailinglist/templates/admin_mailinglist.tpl
+@@ -30,7 +30,7 @@
+ 					<span class="zp-20">{{ title|default:"untitled" }}</span>
+ 					<span class="zp-40">{{ m.rsc[id].summary|default:"-" }}</span>
+ 					{% with m.mailinglist.stats[id] as stats %}
+-						<span class="zp-10">{{ (stats[1] + id.s.subscriberof|length)|format_number }}</span>
++						<span class="zp-10">{{ stats[1]|format_number }}</span>
+ 						<span class="zp-10">{{ stats[2]|length|format_number }}</span>
+ 					{% endwith %}
+ 					<span class="zp-20">
 diff --git a/src/install/z_install_data.erl b/src/install/z_install_data.erl
 --- a/src/install/z_install_data.erl
 +++ b/src/install/z_install_data.erl
