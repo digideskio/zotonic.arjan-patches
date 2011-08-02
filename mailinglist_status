@@ -17,6 +17,130 @@ diff --git a/modules/mod_admin/resources/resource_admin_edit.erl b/modules/mod_a
  ]).
  
  -include_lib("resource_html.hrl").
+diff --git a/modules/mod_admin/translations/nl.po b/modules/mod_admin/translations/nl.po
+--- a/modules/mod_admin/translations/nl.po
++++ b/modules/mod_admin/translations/nl.po
+@@ -299,7 +299,9 @@
+ msgid ""
+ "Here you can edit the person's name.  Use the title of the base content for "
+ "the display name of this person."
+-msgstr "Hier kan je de namen van de persoon bewerken. Gebruik de titel van de basisgegevens voor de naam zoals die wordt weergegeven op pagina's."
++msgstr ""
++"Hier kan je de namen van de persoon bewerken. Gebruik de titel van de "
++"basisgegevens voor de naam zoals die wordt weergegeven op pagina's."
+ 
+ #: modules/mod_admin/templates/admin.tpl:44
+ msgid "Latest modified events"
+@@ -370,7 +372,9 @@
+ msgid ""
+ "Media encompasses all uploaded images, movies and documents. Media can be "
+ "attached to pages."
+-msgstr "Mediabestanden omvatten alle geuploade afbeeldingen, filmpjes en documenten. Ze kunnen worden gekoppeld aan pagina's."
++msgstr ""
++"Mediabestanden omvatten alle geuploade afbeeldingen, filmpjes en documenten. "
++"Ze kunnen worden gekoppeld aan pagina's."
+ 
+ #: modules/mod_admin/templates/_action_dialog_media_upload.tpl:29
+ msgid "Media file"
+@@ -497,7 +501,8 @@
+ #: modules/mod_admin/templates/_admin_edit_content_category.tpl:47
+ msgid ""
+ "Predicates, groups and categories can't be changed into another category."
+-msgstr "Predicaten, groepen en categorieën kunnen niet van categorie veranderen."
++msgstr ""
++"Predicaten, groepen en categorieën kunnen niet van categorie veranderen."
+ 
+ #: modules/mod_admin/templates/admin_media.tpl:41
+ msgid "Preview"
+@@ -537,7 +542,9 @@
+ msgid ""
+ "Rebuild all search-indices by putting all pages and data from the database "
+ "in the indexer queue. This can take a long time!"
+-msgstr "Bouw de zoek-index opnieuw op door alle pagina's langs te gaan. Dit kan even duren!"
++msgstr ""
++"Bouw de zoek-index opnieuw op door alle pagina's langs te gaan. Dit kan even "
++"duren!"
+ 
+ #: modules/mod_admin/templates/admin_status.tpl:22
+ msgid "Rebuild search indices"
+@@ -553,9 +560,6 @@
+ msgstr "Verwijzingen"
+ 
+ #: modules/mod_admin/templates/admin_referrers.tpl:3
+-msgid "Referrers of"
+-msgstr "Verwijzingen van"
+-
+ #: modules/mod_admin/templates/admin_referrers.tpl:9
+ msgid "Referrers to"
+ msgstr "Verwijzingen naar"
+@@ -980,5 +984,8 @@
+ msgid "visit site"
+ msgstr "bezoek site"
+ 
++#~ msgid "Referrers of"
++#~ msgstr "Verwijzingen van"
++
+ #~ msgid "Hello"
+ #~ msgstr "Hallo"
+diff --git a/modules/mod_admin/translations/template/en.pot b/modules/mod_admin/translations/template/en.pot
+--- a/modules/mod_admin/translations/template/en.pot
++++ b/modules/mod_admin/translations/template/en.pot
+@@ -613,12 +613,7 @@
+ "Referrers"
+ msgstr ""
+ 
+-#: ./modules/mod_admin/templates/admin_referrers.tpl:3 
+-msgid ""
+-"Referrers of"
+-msgstr ""
+-
+-#: ./modules/mod_admin/templates/admin_referrers.tpl:9 
++#: ./modules/mod_admin/templates/admin_referrers.tpl:3 ./modules/mod_admin/templates/admin_referrers.tpl:9 
+ msgid ""
+ "Referrers to"
+ msgstr ""
+diff --git a/modules/mod_admin_modules/translations/nl.po b/modules/mod_admin_modules/translations/nl.po
+--- a/modules/mod_admin_modules/translations/nl.po
++++ b/modules/mod_admin_modules/translations/nl.po
+@@ -17,7 +17,7 @@
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+ #: modules/mod_admin_modules/templates/admin_modules.tpl:18
+-#: modules/mod_admin_modules/templates/admin_modules.tpl:33
++#: modules/mod_admin_modules/templates/admin_modules.tpl:34
+ msgid "Activate"
+ msgstr "Activeer"
+ 
+@@ -25,7 +25,7 @@
+ msgid "Author"
+ msgstr "Auteur"
+ 
+-#: modules/mod_admin_modules/templates/admin_modules.tpl:29
++#: modules/mod_admin_modules/templates/admin_modules.tpl:30
+ msgid "Deactivate"
+ msgstr "Deactiveer"
+ 
+diff --git a/modules/mod_admin_modules/translations/template/en.pot b/modules/mod_admin_modules/translations/template/en.pot
+--- a/modules/mod_admin_modules/translations/template/en.pot
++++ b/modules/mod_admin_modules/translations/template/en.pot
+@@ -18,7 +18,7 @@
+ "Content-Type: text/plain; charset=utf-8\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-#: ./modules/mod_admin_modules/templates/admin_modules.tpl:18 ./modules/mod_admin_modules/templates/admin_modules.tpl:33 
++#: ./modules/mod_admin_modules/templates/admin_modules.tpl:18 ./modules/mod_admin_modules/templates/admin_modules.tpl:34 
+ msgid ""
+ "Activate"
+ msgstr ""
+@@ -28,7 +28,7 @@
+ "Author"
+ msgstr ""
+ 
+-#: ./modules/mod_admin_modules/templates/admin_modules.tpl:29 
++#: ./modules/mod_admin_modules/templates/admin_modules.tpl:30 
+ msgid ""
+ "Deactivate"
+ msgstr ""
 diff --git a/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl b/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl
 --- a/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl
 +++ b/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl
@@ -104,7 +228,7 @@ diff --git a/modules/mod_mailinglist/mod_mailinglist.erl b/modules/mod_mailingli
  	case z_acl:rsc_editable(MailingId, Context) of
  		true ->
  			z_render:dialog("Confirm mailing cancelation.", "_dialog_mailing_cancel_confirm.tpl", Args, Context);
-@@ -114,13 +113,13 @@
+@@ -114,16 +113,27 @@
  			z_render:growl_error("You are not allowed to cancel this mailing.", Context)
  	end;
  event({postback, {mailing_cancel, Args}, _TriggerId, _TargetId}, Context) ->
@@ -121,7 +245,21 @@ diff --git a/modules/mod_mailinglist/mod_mailinglist.erl b/modules/mod_mailingli
  		false ->
  			z_render:growl_error("You are not allowed to cancel this mailing.", Context)
  	end;
-@@ -135,18 +134,8 @@
++event({postback, {mailinglist_reset, Args}, _TriggerId, _TargetId}, Context) ->
++	MailingId = proplists:get_value(list_id, Args),
++	PageId = proplists:get_value(page_id, Args),
++	case z_acl:rsc_editable(MailingId, Context) of
++		true ->
++			m_mailinglist:reset_log_email(MailingId, PageId, Context),
++            mod_signal:emit({update_mailinglist_scheduled, [{id, PageId}]}, Context),
++			z_render:growl("The statistics have been cleared.", Context);
++		false ->
++			z_render:growl_error("You are not allowed to reset this mailing.", Context)
++	end;
+ 
+ %% @doc Handle upload of a new recipients list
+ event({submit, {mailinglist_upload,[{id,Id}]}, _TriggerId, _TargetId}, Context) ->
+@@ -135,18 +145,8 @@
              z_render:growl(Msg, "error", true, Context)
      end.
  
@@ -140,7 +278,7 @@ diff --git a/modules/mod_mailinglist/mod_mailinglist.erl b/modules/mod_mailingli
  %%====================================================================
  %% API
  %%====================================================================
-@@ -302,20 +291,8 @@
+@@ -302,20 +302,8 @@
      Recipients = m_mailinglist:get_enabled_recipients(ListId, Context),
      SubscribersOf = m_edge:subjects(ListId, subscriberof, Context),
      {Direct,Queued} = split_list(20, Recipients ++ SubscribersOf),
@@ -162,7 +300,7 @@ diff --git a/modules/mod_mailinglist/mod_mailinglist.erl b/modules/mod_mailingli
      ],
      
      [ send(true, Email, Options, Context) || Email <- Direct ],
-@@ -331,13 +308,19 @@
+@@ -331,13 +319,19 @@
          case z_convert:to_list(z_string:trim(Email)) of
              [] -> skip;
              Email1 ->
@@ -191,17 +329,18 @@ diff --git a/modules/mod_mailinglist/mod_mailinglist.erl b/modules/mod_mailingli
 diff --git a/modules/mod_mailinglist/models/m_mailinglist.erl b/modules/mod_mailinglist/models/m_mailinglist.erl
 --- a/modules/mod_mailinglist/models/m_mailinglist.erl
 +++ b/modules/mod_mailinglist/models/m_mailinglist.erl
-@@ -51,6 +51,9 @@
+@@ -51,6 +51,10 @@
  	get_scheduled/2,
  	check_scheduled/1,
  
 +	get_email_from/2,
 +    already_sent/4,
++    reset_log_email/3,
 +
  	init_tables/1
  ]).
  
-@@ -63,6 +66,10 @@
+@@ -63,6 +67,10 @@
     M#m{value=stats};
  m_find_value(Id, #m{value=stats}, Context) ->
     get_stats(Id, Context);
@@ -212,7 +351,7 @@ diff --git a/modules/mod_mailinglist/models/m_mailinglist.erl b/modules/mod_mail
  m_find_value(recipient, #m{value=undefined} = M, _Context) ->
     M#m{value=recipient};
  m_find_value(Id, #m{value=recipient}, Context) ->
-@@ -107,7 +114,26 @@
+@@ -107,7 +115,26 @@
  							join rsc on id = page_id
  					where mailinglist_id = $1
  					order by publication_start", [Id], Context),
@@ -240,7 +379,7 @@ diff --git a/modules/mod_mailinglist/models/m_mailinglist.erl b/modules/mod_mail
  
  
  %% @doc Fetch all enabled recipients from a list.
-@@ -347,9 +373,9 @@
+@@ -347,9 +374,9 @@
  
  %% @doc Get the list of scheduled mailings for a page.
  get_scheduled(Id, Context) ->
@@ -253,10 +392,11 @@ diff --git a/modules/mod_mailinglist/models/m_mailinglist.erl b/modules/mod_mail
  
  
  %% @doc Fetch the next scheduled mailing that is publicly visible, published and in the publication date range.
-@@ -365,6 +391,32 @@
+@@ -365,6 +392,40 @@
  		limit 1", Context).
  
  
++%% @doc Given an email address for a list/page combination, check if this page already has been delivered to this address.
 +already_sent(Email, ListId, Id, Context) ->
 +    case m_rsc:p(ListId, name, Context) of
 +        <<"mailinglist_test">> ->
@@ -265,6 +405,13 @@ diff --git a/modules/mod_mailinglist/models/m_mailinglist.erl b/modules/mod_mail
 +            ?DEBUG(_X),
 +            z_convert:to_bool(z_db:q1("select true from log_email where other_id = $1 and content_id = $2 and envelop_to = $3 and mailer_status = 'sent'", [ListId, Id, Email], Context))
 +    end.
++
++
++%% @doc Reset the email log for given list/page combination, allowing one to send the same page again to the given list.
++reset_log_email(ListId, PageId, Context) ->
++    z_db:q("delete from log_email where other_id = $1 and content_id = $2", [ListId, PageId], Context),
++    z_depcache:flush({mailinglist_stats, PageId}, Context),
++    ok.
 +
 +
 +%% @doc Get the "from" address used for this mailing list. Looks first in the mailinglist rsc for a ' mailinglist_reply_to' field; falls back to mod_emailer.email_from config variable.
@@ -408,9 +555,9 @@ diff --git a/modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl b/modules
 -	{_ Send this page to a mailing list. _}
 -	<a href="javascript:void(0)" class="do_dialog"  data-dialog="title: '{_ Help about mailing lists. _}', text: '{_ You can send this page as an e-mail to everyone in a mailing list. If the page has a future publication start date, is not yet published or is not visible for the world then the mail will be send after publication of the page. _}', width: '450px'">{_ Need more help? _}</a>
 +
-+
++<p>{_ Click the button below to send this page to a mailinglist. _}</p>
 +<div class="clearfix">
-+    <p><a href="{% url admin_mailing_status id=id %}">{_ Mailinglist status _}</a></p>
++    <p><a class="button" href="{% url admin_mailing_status id=id %}">{_ Go to mailinglist page _}</a></p>
  </div>
 -
 -{% button text=_"Send mailing" title=_"Select a mailing list to send this page to." class="do_tooltip" action={dialog_mailing_page id=id} %}
@@ -430,7 +577,7 @@ diff --git a/modules/mod_mailinglist/templates/_admin_mailing_status_overview.tp
 new file mode 100644
 --- /dev/null
 +++ b/modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,75 @@
 +
 +{% with m.mailinglist.rsc_stats[id] as rsc_stats %}
 +{% with m.mailinglist.scheduled[id] as scheduled %}
@@ -490,6 +637,8 @@ new file mode 100644
 +                        {% else %}
 +                                {% if stats[1] > rsc_stats[mid].total|default:0 %}
 +                                {% button text=_"send mailing" action={dialog_mailing_page id=id list_id=mid} title=_"send to "|append:m.rsc[mid].title %}
++                                {% else %}
++                                {% button text=_"clear" action={confirm text=_"Are you sure you want to reset the statistics for this mailing? This means that if you send the mailing again afterwards, recipients might have gotten the mailing twice." postback={mailinglist_reset list_id=mid page_id=id} delegate="mod_mailinglist"} %}
 +                                {% endif %}
 +                        {% endif %}
 +					</span>
@@ -604,6 +753,862 @@ diff --git a/modules/mod_mailinglist/templates/admin_mailinglist.tpl b/modules/m
  						<span class="zp-10">{{ stats[2]|length|format_number }}</span>
  					{% endwith %}
  					<span class="zp-20">
+diff --git a/modules/mod_mailinglist/translations/nl.po b/modules/mod_mailinglist/translations/nl.po
+--- a/modules/mod_mailinglist/translations/nl.po
++++ b/modules/mod_mailinglist/translations/nl.po
+@@ -8,7 +8,7 @@
+ msgstr ""
+ "Project-Id-Version: zotonic\n"
+ "POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
+-"PO-Revision-Date: 2011-07-21 10:20+0200\n"
++"PO-Revision-Date: 2011-08-02 17:01+0200\n"
+ "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+ "Language-Team: LANGUAGE <LL@li.org>\n"
+ "Language: \n"
+@@ -68,6 +68,7 @@
+ msgstr "Actief"
+ 
+ #: modules/mod_mailinglist/templates/admin_mailinglist.tpl:24
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:17
+ #: modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:38
+ msgid "Actions"
+ msgstr "Acties"
+@@ -90,6 +91,10 @@
+ msgid "All mailing lists"
+ msgstr "Alle mailinglijsten"
+ 
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:38
++msgid "All processed"
++msgstr "Alles verwerkt"
++
+ #: modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:23
+ msgid ""
+ "All recipients of the mailing list. You can upload or download this list, "
+@@ -115,6 +120,16 @@
+ msgid "Are you sure you want to delete the mailing list"
+ msgstr "Weet je zeker dat je de volgende mailinglijst wilt verwijderen:"
+ 
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:61
++msgid ""
++"Are you sure you want to reset the statistics for this mailing? This means "
++"that if you send the mailing again afterwards, recipients might have gotten "
++"the mailing twice."
++msgstr ""
++"Weet je zeker dat je de statistieken voor deze mailing wilt wissen?\n"
++"Dit betekent dat als je de mailing nog een keer verstuurt, ontvangers\n"
++"hem mogelijk dubbel zullen krijgen."
++
+ #: modules/mod_mailinglist/templates/email_mailinglist_confirm.tpl:9
+ msgid ""
+ "Before you will receive any further mail you need to confirm your "
+@@ -122,7 +137,7 @@
+ msgstr "Voordat je email ontvangt, moet je aanmelding eerst worden bevestigd."
+ 
+ #: modules/mod_mailinglist/templates/_mailinglist_scheduled.tpl:12
+-#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:26
++#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:24
+ #: modules/mod_mailinglist/templates/_dialog_mailinglist_recipients_upload.tpl:13
+ #: modules/mod_mailinglist/templates/_dialog_email_page.tpl:13
+ msgid "Cancel"
+@@ -154,6 +169,19 @@
+ "Click the button below to confirm your subscription to this mailing list."
+ msgstr "Klik op de onderstaande knop om je aanmelding te bevestingen."
+ 
++#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:8
++msgid "Click the button below to send this page to a mailinglist."
++msgstr "Klik op de onderstaande knop om deze pagina naar een mailinglijst te versturen."
++
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:31
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:36
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:38
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:40
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:41
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:42
++msgid "Click to view log entries"
++msgstr "Klik om e-mail log te bekijken"
++
+ #: modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:20
+ msgid "Delete all recipients from this list?"
+ msgstr "Alle geaddresseerden van deze lijst verwijderen?"
+@@ -186,10 +214,6 @@
+ msgid "Email"
+ msgstr "Email"
+ 
+-#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:17
+-msgid "Email page"
+-msgstr "Email deze pagina"
+-
+ #: modules/mod_mailinglist/templates/_mailinglist_subscribe_form.tpl:22
+ msgid "First name"
+ msgstr "Voornaam"
+@@ -210,6 +234,10 @@
+ msgid "Give your e-mail address to subscribe to"
+ msgstr "Geef je email adres waarmee je je wilt aanmelden."
+ 
++#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:10
++msgid "Go to mailinglist page"
++msgstr "Ga naar mailingpagina"
++
+ #: modules/mod_mailinglist/templates/email_mailinglist_goodbye.tpl:6
+ msgid "Goodbye,"
+ msgstr "Tot ziens,"
+@@ -220,7 +248,6 @@
+ msgstr "Hallo,"
+ 
+ #: modules/mod_mailinglist/templates/_admin_edit_sidebar.mailinglist.tpl:10
+-#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:10
+ msgid "Help about mailing lists."
+ msgstr "Hulp over mailinglijsten"
+ 
+@@ -228,6 +255,19 @@
+ msgid "Hope to see you again."
+ msgstr "Hopelijk tot ziens"
+ 
++#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:6
++msgid ""
++"It appears you have sent\n"
++"    this page once already to this list. If you send it again, only\n"
++"    the recipients that did not yet receive the mail will get it. As a\n"
++"    safety-caution, it is impossible to send the same page twice to\n"
++"    the same e-mail address."
++msgstr ""
++"Het lijkt erop dat deze pagina al eens naar deze lijst is\n"
++"verstuurd. Als je deze pagina opnieuw verstuurt, zal hij (als\n"
++"veiligheidsmaatregel) alleen aankomen bij de ontvangers die hem nog\n"
++"niet eerder hebben gekregen."
++
+ #: modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tpl:4
+ msgid "Keep mailing"
+ msgstr "Niet afmelden"
+@@ -255,12 +295,16 @@
+ msgstr "Mailinglijst instellingen"
+ 
+ #: modules/mod_mailinglist/templates/admin_mailinglist.tpl:9
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:10
+ #: modules/mod_mailinglist/templates/_admin_menu_module.tpl:2
+ msgid "Mailing lists"
+ msgstr "Mailinglijsten"
+ 
++#: modules/mod_mailinglist/templates/admin_mailing_status.tpl:3
++msgid "Mailing status"
++msgstr "Mailing status"
++
+ #: modules/mod_mailinglist/templates/_admin_edit_sidebar.mailinglist.tpl:10
+-#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:10
+ msgid "Need more help?"
+ msgstr "Meer hulp nodig?"
+ 
+@@ -269,6 +313,7 @@
+ msgstr "Nieuwe mailinglijst"
+ 
+ #: modules/mod_mailinglist/templates/admin_mailinglist.tpl:50
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:69
+ msgid "No items found"
+ msgstr "Geen ontvangers gevonden"
+ 
+@@ -276,10 +321,18 @@
+ msgid "No recipients"
+ msgstr "Geen ontvangers"
+ 
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:40
++msgid "OK"
++msgstr "OK"
++
+ #: modules/mod_mailinglist/templates/mailinglist_unsubscribe.tpl:24
+ msgid "Our excuses for the inconvenience."
+ msgstr "Onze excuses voor het ongemak"
+ 
++#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:3
++msgid "Please confirm that you want to send the page"
++msgstr "Bevestig a.u.b. dat je de pagina"
++
+ #: modules/mod_mailinglist/templates/mailinglist_confirm.tpl:16
+ msgid "Please confirm your subscription"
+ msgstr "Bevestig a.u.b. uw aanmelding"
+@@ -292,6 +345,10 @@
+ msgid "Please follow"
+ msgstr "Klik a.u.b. op"
+ 
++#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:6
++msgid "Please note:"
++msgstr "Let op:"
++
+ #: modules/mod_mailinglist/templates/_mailing_footer.tpl:8
+ msgid "Please unsubscribe"
+ msgstr "Klik hier"
+@@ -305,6 +362,7 @@
+ msgstr "Lees deze pagina online"
+ 
+ #: modules/mod_mailinglist/templates/admin_mailinglist.tpl:22
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:14
+ #: modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:33
+ msgid "Recipients"
+ msgstr "Ontvangers"
+@@ -335,32 +393,19 @@
+ msgid "See the"
+ msgstr "Bekijk de"
+ 
+-#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:2
+-msgid "Select a mailing list to send the page"
+-msgstr "Kies een mailinglijst om deze pagina naartoe te sturen"
+-
+-#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:13
+-msgid "Select a mailing list to send this page to."
+-msgstr "Kies een mailinglijst om deze pagina naartoe te sturen<"
+-
+ #: modules/mod_mailinglist/templates/_dialog_mailinglist_recipients_upload.tpl:7
+ msgid "Select file"
+ msgstr "Kies bestand"
+ 
+-#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:7
+-msgid "Select mailing list"
+-msgstr "Kies mailinglijst"
+-
+ #: modules/mod_mailinglist/templates/_dialog_email_page.tpl:12
+ msgid "Send e-mail"
+ msgstr "Via email"
+ 
+-#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:25
+-#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:13
++#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:23
+ msgid "Send mailing"
+ msgstr "Verstuur mailing"
+ 
+-#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:15
++#: modules/mod_mailinglist/templates/admin_mailing_status.tpl:15
+ msgid "Send test mailing"
+ msgstr "Verstuur testmailing"
+ 
+@@ -368,15 +413,7 @@
+ msgid "Send the page"
+ msgstr "Verstuur pagina"
+ 
+-#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:9
+-msgid "Send this page to a mailing list."
+-msgstr "Verstuur deze pagina naar een mailinglijst."
+-
+-#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:17
+-msgid "Send this page to an e-mail address."
+-msgstr "Verstuur deze pagina naar een email adres."
+-
+-#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:15
++#: modules/mod_mailinglist/templates/admin_mailing_status.tpl:15
+ msgid "Send this page to the test mailing list."
+ msgstr "Verstuur deze pagina naar de testmailinglijst."
+ 
+@@ -396,6 +433,10 @@
+ msgid "Sender name for e-mails (optional)"
+ msgstr "Afzendernaam voor mailings (optioneel)"
+ 
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:15
++msgid "Sent on"
++msgstr "Verstuurd op"
++
+ #: modules/mod_mailinglist/templates/_dialog_email_page.tpl:3
+ msgid "Sent the e-mail."
+ msgstr "Email verstuurd."
+@@ -420,6 +461,10 @@
+ msgid "Sorry, can’t find your subscription"
+ msgstr "Je aanmelding is niet gevonden."
+ 
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:16
++msgid "Statistics"
++msgstr "Statistieken"
++
+ #: modules/mod_mailinglist/templates/mailinglist_confirm.tpl:21
+ msgid "Subscribe"
+ msgstr "Aanmelden"
+@@ -445,11 +490,11 @@
+ "unsubscribed, or the mailing list has been deleted."
+ msgstr "De afmeldlink is ongeldig. Misschien ben je al afgemeld."
+ 
+-#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:21
++#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:19
+ msgid "The mailing will be send after the publication start date of"
+ msgstr "De mailing zal worden verstuurd op de publicatiedatum"
+ 
+-#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:18
++#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:16
+ msgid "The mailing will be send after this page has been published."
+ msgstr ""
+ "De mailing zal worden verstuurd wanneer deze pagina gepubliceerd wordt."
+@@ -467,6 +512,7 @@
+ msgstr "Je krijgt deze mail omdat iemand die"
+ 
+ #: modules/mod_mailinglist/templates/admin_mailinglist.tpl:20
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:13
+ msgid "Title"
+ msgstr "Titel"
+ 
+@@ -537,18 +583,6 @@
+ msgid "You can"
+ msgstr "Je kunt"
+ 
+-#: modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:10
+-msgid ""
+-"You can send this page as an e-mail to everyone in a mailing list. If the "
+-"page has a future publication start date, is not yet published or is not "
+-"visible for the world then the mail will be send after publication of the "
+-"page."
+-msgstr ""
+-"Je kan deze pagina als een email versturen naar iedereen die lid is\n"
+-"van een mailinglijst. Als de pagina een publicatiedatum in de toekomst\n"
+-"heeft of nog niet gepubliceerd is, dan wordt de mail pas verstuurd\n"
+-"nadat de pagina is gepubliceerd."
+-
+ #: modules/mod_mailinglist/templates/mailinglist_confirm.tpl:31
+ msgid ""
+ "You can try to re-subscribe to one of our mailing lists in the side column."
+@@ -576,12 +610,21 @@
+ "verstuurd naar het opgegeven adres. Als de mail niet aankomt, controleer dan "
+ "de \"spam\" folder."
+ 
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:41
++msgid "bounced"
++msgstr "bounce"
++
+ #: modules/mod_mailinglist/templates/_dialog_mailinglist_delete_confirm.tpl:9
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:56
+ #: modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:14
+ #: modules/mod_mailinglist/templates/_mailinglist_subscribe_form.tpl:62
+ msgid "cancel"
+ msgstr "annuleer"
+ 
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:61
++msgid "clear"
++msgstr "wissen"
++
+ #: modules/mod_mailinglist/templates/email_mailinglist_welcome.tpl:10
+ msgid "click here to unsubscribe."
+ msgstr "hier klikken om je af te melden."
+@@ -598,18 +641,43 @@
+ msgstr "email"
+ 
+ #: modules/mod_mailinglist/templates/admin_mailinglist.tpl:39
++#: modules/mod_mailinglist/templates/admin_mailing_status.tpl:13
+ #: modules/mod_mailinglist/templates/_mailinglist_subscribe_form.tpl:56
+ msgid "edit"
+ msgstr "bewerk"
+ 
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:42
++msgid "error"
++msgstr "fout"
++
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:6
++msgid "has been sent to the following lists:"
++msgstr "is verzonden naar de volgende mailinglijsten:"
++
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:8
++msgid "has never been sent yet."
++msgstr "is nog nooit verstuurd."
++
+ #: modules/mod_mailinglist/templates/mailinglist_unsubscribe.tpl:12
+ msgid "mailing list"
+ msgstr "mailinglijst"
+ 
++#: modules/mod_mailinglist/templates/admin_mailing_status.tpl:9
++msgid "mailinglist status page"
++msgstr "mailinglijst statuspagina"
++
+ #: modules/mod_mailinglist/templates/email_mailinglist_confirm.tpl:11
+ msgid "or copy and paste the address below in your browser."
+ msgstr "of copy-paste het onderstaande adres in je browser."
+ 
++#: modules/mod_mailinglist/templates/admin_mailing_status.tpl:14
++msgid "preview mailing"
++msgstr "Mailingvoorbeeld"
++
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:36
++msgid "processed"
++msgstr "verwerkt"
++
+ #: modules/mod_mailinglist/templates/email_page.tpl:7
+ msgid "read the full article online."
+ msgstr "lees het hele artikel online."
+@@ -618,6 +686,19 @@
+ msgid "recipients"
+ msgstr "ontvangers"
+ 
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:32
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:47
++msgid "scheduled"
++msgstr "ingepland"
++
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:59
++msgid "send mailing"
++msgstr "Verstuur mailing"
++
++#: modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:59
++msgid "send to "
++msgstr "verstuur naar"
++
+ #: modules/mod_mailinglist/templates/_mailinglist_subscribe_form.tpl:58
+ msgid "subscribe"
+ msgstr "aanmelden"
+@@ -634,7 +715,10 @@
+ msgid "thought you would be interested."
+ msgstr "bezocht dacht dat je dit leuk zou vinden."
+ 
+-#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:2
++#: modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:3
++msgid "to"
++msgstr "naar:"
++
+ #: modules/mod_mailinglist/templates/_dialog_email_page.tpl:1
+ msgid "to:"
+ msgstr "naar:"
+@@ -651,5 +735,34 @@
+ msgid "with your e-mail address"
+ msgstr "met je email adres"
+ 
++#~ msgid "Mailinglist status"
++#~ msgstr "Mailinglijst status"
++
++#~ msgid "Email page"
++#~ msgstr "Email deze pagina"
++
++#~ msgid "Select a mailing list to send this page to."
++#~ msgstr "Kies een mailinglijst om deze pagina naartoe te sturen<"
++
++#~ msgid "Select mailing list"
++#~ msgstr "Kies mailinglijst"
++
++#~ msgid "Send this page to a mailing list."
++#~ msgstr "Verstuur deze pagina naar een mailinglijst."
++
++#~ msgid "Send this page to an e-mail address."
++#~ msgstr "Verstuur deze pagina naar een email adres."
++
++#~ msgid ""
++#~ "You can send this page as an e-mail to everyone in a mailing list. If the "
++#~ "page has a future publication start date, is not yet published or is not "
++#~ "visible for the world then the mail will be send after publication of the "
++#~ "page."
++#~ msgstr ""
++#~ "Je kan deze pagina als een email versturen naar iedereen die lid is\n"
++#~ "van een mailinglijst. Als de pagina een publicatiedatum in de toekomst\n"
++#~ "heeft of nog niet gepubliceerd is, dan wordt de mail pas verstuurd\n"
++#~ "nadat de pagina is gepubliceerd."
++
+ #~ msgid "make smaller"
+ #~ msgstr "kleiner"
+diff --git a/modules/mod_mailinglist/translations/template/en.pot b/modules/mod_mailinglist/translations/template/en.pot
+--- a/modules/mod_mailinglist/translations/template/en.pot
++++ b/modules/mod_mailinglist/translations/template/en.pot
+@@ -65,7 +65,7 @@
+ "Act"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:24 ./modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:38 
++#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:24 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:17 ./modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:38 
+ msgid ""
+ "Actions"
+ msgstr ""
+@@ -90,6 +90,11 @@
+ "All mailing lists"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:38 
++msgid ""
++"All processed"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:23 
+ msgid ""
+ "All recipients of the mailing list. You can upload or download this list, "
+@@ -113,13 +118,20 @@
+ "Are you sure you want to delete the mailing list"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:61 
++msgid ""
++"Are you sure you want to reset the statistics for this mailing? This means "
++"that if you send the mailing again afterwards, recipients might have gotten "
++"the mailing twice."
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/email_mailinglist_confirm.tpl:9 
+ msgid ""
+ "Before you will receive any further mail you need to confirm your "
+ "subscription."
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_mailinglist_scheduled.tpl:12 ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:26 ./modules/mod_mailinglist/templates/_dialog_mailinglist_recipients_upload.tpl:13 ./modules/mod_mailinglist/templates/_dialog_email_page.tpl:13 
++#: ./modules/mod_mailinglist/templates/_mailinglist_scheduled.tpl:12 ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:24 ./modules/mod_mailinglist/templates/_dialog_mailinglist_recipients_upload.tpl:13 ./modules/mod_mailinglist/templates/_dialog_email_page.tpl:13 
+ msgid ""
+ "Cancel"
+ msgstr ""
+@@ -155,6 +167,16 @@
+ "Click the button below to confirm your subscription to this mailing list."
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:8 
++msgid ""
++"Click the button below to send this page to a mailinglist."
++msgstr ""
++
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:31 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:36 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:38 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:40 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:41 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:42 
++msgid ""
++"Click to view log entries"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:20 
+ msgid ""
+ "Delete all recipients from this list?"
+@@ -195,11 +217,6 @@
+ "Email"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:17 
+-msgid ""
+-"Email page"
+-msgstr ""
+-
+ #: ./modules/mod_mailinglist/templates/_mailinglist_subscribe_form.tpl:22 
+ msgid ""
+ "First name"
+@@ -221,6 +238,11 @@
+ "Give your e-mail address to subscribe to"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:10 
++msgid ""
++"Go to mailinglist page"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/email_mailinglist_goodbye.tpl:6 
+ msgid ""
+ "Goodbye,"
+@@ -231,7 +253,7 @@
+ "Hello,"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.mailinglist.tpl:10 ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:10 
++#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.mailinglist.tpl:10 
+ msgid ""
+ "Help about mailing lists."
+ msgstr ""
+@@ -241,6 +263,14 @@
+ "Hope to see you again."
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:6 
++msgid ""
++"It appears you have sent\n    this page once already to this list. If you "
++"send it again, only\n    the recipients that did not yet receive the mail "
++"will get it. As a\n    safety-caution, it is impossible to send the same "
++"page twice to\n    the same e-mail address."
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tpl:4 
+ msgid ""
+ "Keep mailing"
+@@ -271,12 +301,17 @@
+ "Mailing list settings."
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:9 ./modules/mod_mailinglist/templates/_admin_menu_module.tpl:2 
++#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:9 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:10 ./modules/mod_mailinglist/templates/_admin_menu_module.tpl:2 
+ msgid ""
+ "Mailing lists"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.mailinglist.tpl:10 ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:10 
++#: ./modules/mod_mailinglist/templates/admin_mailing_status.tpl:3 
++msgid ""
++"Mailing status"
++msgstr ""
++
++#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.mailinglist.tpl:10 
+ msgid ""
+ "Need more help?"
+ msgstr ""
+@@ -286,7 +321,7 @@
+ "New mailing list"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:50 
++#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:50 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:69 
+ msgid ""
+ "No items found"
+ msgstr ""
+@@ -296,11 +331,21 @@
+ "No recipients"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:40 
++msgid ""
++"OK"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/mailinglist_unsubscribe.tpl:24 
+ msgid ""
+ "Our excuses for the inconvenience."
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:3 
++msgid ""
++"Please confirm that you want to send the page"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/mailinglist_confirm.tpl:16 
+ msgid ""
+ "Please confirm your subscription"
+@@ -316,6 +361,11 @@
+ "Please follow"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:6 
++msgid ""
++"Please note:"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/_mailing_footer.tpl:8 
+ msgid ""
+ "Please unsubscribe"
+@@ -331,7 +381,7 @@
+ "Read this page on the web."
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:22 ./modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:33 
++#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:22 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:14 ./modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:33 
+ msgid ""
+ "Recipients"
+ msgstr ""
+@@ -362,37 +412,22 @@
+ "See the"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:2 
+-msgid ""
+-"Select a mailing list to send the page"
+-msgstr ""
+-
+-#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:13 
+-msgid ""
+-"Select a mailing list to send this page to."
+-msgstr ""
+-
+ #: ./modules/mod_mailinglist/templates/_dialog_mailinglist_recipients_upload.tpl:7 
+ msgid ""
+ "Select file"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:7 
+-msgid ""
+-"Select mailing list"
+-msgstr ""
+-
+ #: ./modules/mod_mailinglist/templates/_dialog_email_page.tpl:12 
+ msgid ""
+ "Send e-mail"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:25 ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:13 
++#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:23 
+ msgid ""
+ "Send mailing"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:15 
++#: ./modules/mod_mailinglist/templates/admin_mailing_status.tpl:15 
+ msgid ""
+ "Send test mailing"
+ msgstr ""
+@@ -402,17 +437,7 @@
+ "Send the page"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:9 
+-msgid ""
+-"Send this page to a mailing list."
+-msgstr ""
+-
+-#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:17 
+-msgid ""
+-"Send this page to an e-mail address."
+-msgstr ""
+-
+-#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:15 
++#: ./modules/mod_mailinglist/templates/admin_mailing_status.tpl:15 
+ msgid ""
+ "Send this page to the test mailing list."
+ msgstr ""
+@@ -437,6 +462,11 @@
+ "Sender name for e-mails (optional)"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:15 
++msgid ""
++"Sent on"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/_dialog_email_page.tpl:3 
+ msgid ""
+ "Sent the e-mail."
+@@ -463,6 +493,11 @@
+ "Sorry, can’t find your subscription"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:16 
++msgid ""
++"Statistics"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/mailinglist_confirm.tpl:21 
+ msgid ""
+ "Subscribe"
+@@ -490,12 +525,12 @@
+ "unsubscribed, or the mailing list has been deleted."
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:21 
++#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:19 
+ msgid ""
+ "The mailing will be send after the publication start date of"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:18 
++#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:16 
+ msgid ""
+ "The mailing will be send after this page has been published."
+ msgstr ""
+@@ -515,7 +550,7 @@
+ "This mail was sent to you because someone visiting"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:20 
++#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:20 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:13 
+ msgid ""
+ "Title"
+ msgstr ""
+@@ -592,14 +627,6 @@
+ "You can"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl:10 
+-msgid ""
+-"You can send this page as an e-mail to everyone in a mailing list. If the "
+-"page has a future publication start date, is not yet published or is not "
+-"visible for the world then the mail will be send after publication of the "
+-"page."
+-msgstr ""
+-
+ #: ./modules/mod_mailinglist/templates/mailinglist_confirm.tpl:31 
+ msgid ""
+ "You can try to re-subscribe to one of our mailing lists in the side column."
+@@ -627,11 +654,21 @@
+ "receive it, then please check your spam folder."
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_dialog_mailinglist_delete_confirm.tpl:9 ./modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:14 ./modules/mod_mailinglist/templates/_mailinglist_subscribe_form.tpl:62 
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:41 
++msgid ""
++"bounced"
++msgstr ""
++
++#: ./modules/mod_mailinglist/templates/_dialog_mailinglist_delete_confirm.tpl:9 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:56 ./modules/mod_mailinglist/templates/admin_mailinglist_recipients.tpl:14 ./modules/mod_mailinglist/templates/_mailinglist_subscribe_form.tpl:62 
+ msgid ""
+ "cancel"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:61 
++msgid ""
++"clear"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/email_mailinglist_welcome.tpl:10 
+ msgid ""
+ "click here to unsubscribe."
+@@ -647,21 +684,51 @@
+ "e-Mail"
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:39 ./modules/mod_mailinglist/templates/_mailinglist_subscribe_form.tpl:56 
++#: ./modules/mod_mailinglist/templates/admin_mailinglist.tpl:39 ./modules/mod_mailinglist/templates/admin_mailing_status.tpl:13 ./modules/mod_mailinglist/templates/_mailinglist_subscribe_form.tpl:56 
+ msgid ""
+ "edit"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:42 
++msgid ""
++"error"
++msgstr ""
++
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:6 
++msgid ""
++"has been sent to the following lists:"
++msgstr ""
++
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:8 
++msgid ""
++"has never been sent yet."
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/mailinglist_unsubscribe.tpl:12 
+ msgid ""
+ "mailing list"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/admin_mailing_status.tpl:9 
++msgid ""
++"mailinglist status page"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/email_mailinglist_confirm.tpl:11 
+ msgid ""
+ "or copy and paste the address below in your browser."
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/admin_mailing_status.tpl:14 
++msgid ""
++"preview mailing"
++msgstr ""
++
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:36 
++msgid ""
++"processed"
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/email_page.tpl:7 
+ msgid ""
+ "read the full article online."
+@@ -672,6 +739,21 @@
+ "recipients"
+ msgstr ""
+ 
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:32 ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:47 
++msgid ""
++"scheduled"
++msgstr ""
++
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:59 
++msgid ""
++"send mailing"
++msgstr ""
++
++#: ./modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl:59 
++msgid ""
++"send to "
++msgstr ""
++
+ #: ./modules/mod_mailinglist/templates/_mailinglist_subscribe_form.tpl:58 
+ msgid ""
+ "subscribe"
+@@ -692,7 +774,12 @@
+ "thought you would be interested."
+ msgstr ""
+ 
+-#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:2 ./modules/mod_mailinglist/templates/_dialog_email_page.tpl:1 
++#: ./modules/mod_mailinglist/templates/_dialog_mailing_page.tpl:3 
++msgid ""
++"to"
++msgstr ""
++
++#: ./modules/mod_mailinglist/templates/_dialog_email_page.tpl:1 
+ msgid ""
+ "to:"
+ msgstr ""
 diff --git a/src/install/z_install_data.erl b/src/install/z_install_data.erl
 --- a/src/install/z_install_data.erl
 +++ b/src/install/z_install_data.erl
