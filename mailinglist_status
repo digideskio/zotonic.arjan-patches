@@ -1,5 +1,5 @@
 # HG changeset patch
-# Parent 122381d194f5d88827ae53ea741887cadaaac5ef
+# Parent 926a3a74f488913ea8ea43240fb2f3b1c6336b55
 Mailinglist separate page for previewing, sending and checking the
 mailing statistics.  Also allows scheduled sending of mailings when
 page becomes visible.
@@ -144,7 +144,16 @@ diff --git a/modules/mod_admin_modules/translations/template/en.pot b/modules/mo
 diff --git a/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl b/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl
 --- a/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl
 +++ b/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_page.erl
-@@ -30,22 +30,24 @@
+@@ -3,7 +3,7 @@
+ %% @date 2009-11-27
+ %% @doc Open a dialog for sending an e-mail to a mailing list.
+ 
+-%% Copyright 2009 Marc Worrell
++%% Copyright 2009,2011 Marc Worrell, Arjan Scherpenisse
+ %%
+ %% Licensed under the Apache License, Version 2.0 (the "License");
+ %% you may not use this file except in compliance with the License.
+@@ -30,32 +30,34 @@
  
  render_action(TriggerId, TargetId, Args, Context) ->
      Id = z_convert:to_integer(proplists:get_value(id, Args)),
@@ -167,16 +176,21 @@ diff --git a/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_p
 -	z_render:dialog("Give e-mail address of recipient.", "_dialog_mailing_page.tpl", Vars, Context);
 +	z_render:dialog("Confirm sending to mailinglist.", "_dialog_mailing_page.tpl", Vars, Context);
  
++%% When the page is not yet visible and the user did not choose the
++%% "now" button, the mailing is queued.
  event({submit, {mailing_page, Args}, _TriggerId, _TargetId}, Context) ->
  	PageId = proplists:get_value(id, Args),
  	OnSuccess = proplists:get_all_values(on_success, Args),
 -	ListId = z_convert:to_integer(z_context:get_q("mailinglist_id", Context)),
+-	Name = m_rsc:p(ListId, name, Context),
+-	Context1 = case Name == <<"mailinglist_test">> orelse z_acl:rsc_visible(PageId, z_acl:anondo(Context)) of
 +	ListId = z_convert:to_integer(z_context:get_q("list_id", Context)),
- 	Name = m_rsc:p(ListId, name, Context),
- 	Context1 = case Name == <<"mailinglist_test">> orelse z_acl:rsc_visible(PageId, z_acl:anondo(Context)) of
++    When = z_context:get_q("mail_when", Context),
++	Context1 = case z_acl:rsc_visible(PageId, z_acl:anondo(Context)) orelse When =:= "now" of
  		true -> 
-@@ -53,9 +55,7 @@
- 			z_render:growl("The e-mails are being send...", Context);
+ 			z_notifier:notify({mailinglist_mailing, ListId, PageId}, Context),
+-			z_render:growl("The e-mails are being send...", Context);
++			z_render:growl("The e-mails are being sent...", Context);
  		false -> 
  			m_mailinglist:insert_scheduled(ListId, PageId, Context),
 +            mod_signal:emit({update_mailinglist_scheduled, [{id, PageId}]}, Context),
@@ -187,6 +201,22 @@ diff --git a/modules/mod_mailinglist/actions/action_mailinglist_dialog_mailing_p
 -
 -
 +	z_render:wire(OnSuccess, Context1).
+diff --git a/modules/mod_mailinglist/actions/action_mailinglist_mailing_page_test.erl b/modules/mod_mailinglist/actions/action_mailinglist_mailing_page_test.erl
+--- a/modules/mod_mailinglist/actions/action_mailinglist_mailing_page_test.erl
++++ b/modules/mod_mailinglist/actions/action_mailinglist_mailing_page_test.erl
+@@ -40,8 +40,11 @@
+ 		{ok, ListId} ->
+ 			case z_acl:rsc_visible(ListId, Context) of
+ 				true ->
++                    %% Reset the recepient stats for the test list
++                    m_mailinglist:reset_log_email(ListId, PageId, Context),
++                    %% And send.
+ 					z_notifier:notify({mailinglist_mailing, ListId, PageId}, Context),
+-					Context1 = z_render:growl("Sending the page to the test mailing list.", Context),
++					Context1 = z_render:growl("Sending the page to the test mailing list...", Context),
+ 					z_render:wire(OnSuccess, Context1);
+ 				false ->
+ 					z_render:growl_error("You are not allowed to send mail to the test mailing list.", Context)
 diff --git a/modules/mod_mailinglist/dispatch/dispatch_mailinglist b/modules/mod_mailinglist/dispatch/dispatch_mailinglist
 --- a/modules/mod_mailinglist/dispatch/dispatch_mailinglist
 +++ b/modules/mod_mailinglist/dispatch/dispatch_mailinglist
@@ -278,7 +308,28 @@ diff --git a/modules/mod_mailinglist/mod_mailinglist.erl b/modules/mod_mailingli
  %%====================================================================
  %% API
  %%====================================================================
-@@ -302,20 +302,8 @@
+@@ -284,38 +284,17 @@
+ 	
+ 
+ %% @doc Send the page to the mailinglist. The first 20 e-mails are send directly, which is useful for
+-%% short lists like test e-mail lists. All other e-mails are queued and send later.  When the page is
+-%% not yet visible then the mailing is queued.  The test mailinglist is always send directly.
++%% short lists like test e-mail lists. All other e-mails are queued and sent later.
+ send_mailing(ListId, PageId, Context) ->
+-	case m_rsc:p(ListId, name, Context) of
+-		<<"mailinglist_test">> ->
+-			spawn(fun() -> send_mailing_process(ListId, PageId, Context) end);
+-		_ ->
+-			AnonymousContext = z_acl:anondo(Context),
+-			case z_acl:rsc_visible(PageId, AnonymousContext) of
+-				true -> spawn(fun() -> send_mailing_process(ListId, PageId, AnonymousContext) end);
+-				false -> m_mailinglist:insert_scheduled(ListId, PageId, Context)
+-			end
+-	end.
++    spawn(fun() -> send_mailing_process(ListId, PageId, z_acl:sudo(Context)) end).
++
+ 
+ send_mailing_process(ListId, PageId, Context) ->
      Recipients = m_mailinglist:get_enabled_recipients(ListId, Context),
      SubscribersOf = m_edge:subjects(ListId, subscriberof, Context),
      {Direct,Queued} = split_list(20, Recipients ++ SubscribersOf),
@@ -300,7 +351,7 @@ diff --git a/modules/mod_mailinglist/mod_mailinglist.erl b/modules/mod_mailingli
      ],
      
      [ send(true, Email, Options, Context) || Email <- Direct ],
-@@ -331,13 +319,19 @@
+@@ -331,13 +310,18 @@
          case z_convert:to_list(z_string:trim(Email)) of
              [] -> skip;
              Email1 ->
@@ -315,8 +366,7 @@ diff --git a/modules/mod_mailinglist/mod_mailinglist.erl b/modules/mod_mailingli
 +                %% check if not already sent
 +                case m_mailinglist:already_sent(Email1, ListId, Id, Context) of
 +                    true ->
-+                        ?DEBUG("Already sent..."),
-+                        %% already sent...
++                        %% already sent.
 +                        ok;
 +                    false ->
 +                        Attachments = mod_mailinglist:page_attachments(Id, Context),
@@ -374,7 +424,7 @@ diff --git a/modules/mod_mailinglist/models/m_mailinglist.erl b/modules/mod_mail
 +                            Stats,
 +                            z_db:q("select other_id, mailer_status, count(envelop_to) from log_email where content_id = $1 group by other_id, mailer_status", [Id], Context))
 +        end,
-+    z_depcache:memo(F, {mailinglist_stats, Id}, 5, [Id], Context). %% Cache a little while to prevent database DOS while mail is sending
++    z_depcache:memo(F, {mailinglist_stats, Id}, 1, [Id], Context). %% Cache a little while to prevent database DOS while mail is sending
 +
  
  
@@ -392,19 +442,13 @@ diff --git a/modules/mod_mailinglist/models/m_mailinglist.erl b/modules/mod_mail
  
  
  %% @doc Fetch the next scheduled mailing that is publicly visible, published and in the publication date range.
-@@ -365,6 +392,40 @@
+@@ -365,6 +392,34 @@
  		limit 1", Context).
  
  
 +%% @doc Given an email address for a list/page combination, check if this page already has been delivered to this address.
 +already_sent(Email, ListId, Id, Context) ->
-+    case m_rsc:p(ListId, name, Context) of
-+        <<"mailinglist_test">> ->
-+            false; %% test mailinglist allows duplicates
-+        _X ->
-+            ?DEBUG(_X),
-+            z_convert:to_bool(z_db:q1("select true from log_email where other_id = $1 and content_id = $2 and envelop_to = $3 and mailer_status = 'sent'", [ListId, Id, Email], Context))
-+    end.
++    z_convert:to_bool(z_db:q1("select true from log_email where other_id = $1 and content_id = $2 and envelop_to = $3 and mailer_status = 'sent'", [ListId, Id, Email], Context)).
 +
 +
 +%% @doc Reset the email log for given list/page combination, allowing one to send the same page again to the given list.
@@ -545,8 +589,9 @@ diff --git a/modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl b/modules
 @@ -1,25 +1,12 @@
  {% extends "admin_edit_widget_std.tpl" %}
  
- {% block widget_title %}{_ Send to mailing list _}{% endblock %}
+-{% block widget_title %}{_ Send to mailing list _}{% endblock %}
 -{% block widget_show_minimized %}{{ m.mailinglist.scheduled[id]|yesno:"false,true" }}{% endblock %}
++{% block widget_title %}{_ Mailing list _}{% endblock %}
 +{% block widget_show_minimized %}false{% endblock %}
  
  {% block widget_content %}
@@ -555,9 +600,9 @@ diff --git a/modules/mod_mailinglist/templates/_admin_edit_sidebar.tpl b/modules
 -	{_ Send this page to a mailing list. _}
 -	<a href="javascript:void(0)" class="do_dialog"  data-dialog="title: '{_ Help about mailing lists. _}', text: '{_ You can send this page as an e-mail to everyone in a mailing list. If the page has a future publication start date, is not yet published or is not visible for the world then the mail will be send after publication of the page. _}', width: '450px'">{_ Need more help? _}</a>
 +
-+<p>{_ Click the button below to send this page to a mailinglist. _}</p>
 +<div class="clearfix">
-+    <p><a class="button" href="{% url admin_mailing_status id=id %}">{_ Go to mailinglist page _}</a></p>
++    <a class="button do_tooltip" title="{_ Send this page to a mailinglist and view mailinglist statistics. _}" href="{% url admin_mailing_status id=id %}">{_ Go to mailinglist page _}</a>
++    {% button text=_"Email page" title=_"Send this page to an e-mail address." class="do_tooltip" action={dialog_email_page id=id} %}
  </div>
 -
 -{% button text=_"Send mailing" title=_"Select a mailing list to send this page to." class="do_tooltip" action={dialog_mailing_page id=id} %}
@@ -669,11 +714,11 @@ diff --git a/modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tp
 diff --git a/modules/mod_mailinglist/templates/_dialog_mailing_page.tpl b/modules/mod_mailinglist/templates/_dialog_mailing_page.tpl
 --- a/modules/mod_mailinglist/templates/_dialog_mailing_page.tpl
 +++ b/modules/mod_mailinglist/templates/_dialog_mailing_page.tpl
-@@ -1,18 +1,20 @@
+@@ -1,27 +1,35 @@
 +{% with m.mailinglist.rsc_stats[id] as rsc_stats %}
  
 -<p>{_ Select a mailing list to send the page _} {{ m.rsc[id].title }} {_ to: _}</p>
-+<p>{_ Please confirm that you want to send the page _} {{ m.rsc[id].title }} {_ to _} {{ m.rsc[list_id].title }}</p>
++<p>{_ Please confirm that you want to send the page _} {{ m.rsc[id].title }} {_ to the list _} {{ m.rsc[list_id].title }}</p>
 +
 +{% if rsc_stats[list_id].total > 0 %}
 +<p><strong>{_ Please note: _}</strong> {_ It appears you have sent
@@ -681,7 +726,6 @@ diff --git a/modules/mod_mailinglist/templates/_dialog_mailing_page.tpl b/module
 +    the recipients that did not yet receive the mail will get it. As a
 +    safety-caution, it is impossible to send the same page twice to
 +    the same e-mail address. _}</p>
-+
 +{% endif %}
 +
  
@@ -699,9 +743,26 @@ diff --git a/modules/mod_mailinglist/templates/_dialog_mailing_page.tpl b/module
 -	<div class="clear">&nbsp;</div>
 +    <input type="hidden" name="list_id" value="{{ list_id }}" />
  
- 	{% if not m.rsc[id].is_published %}
- 		<p>{_ The mailing will be send after this page has been published. _}</p>
-@@ -25,3 +27,5 @@
+-	{% if not m.rsc[id].is_published %}
+-		<p>{_ The mailing will be send after this page has been published. _}</p>
+-	{% else %}
+-		{% if m.rsc[id].publication_start|in_future %}
+-			<p>{_ The mailing will be send after the publication start date of _} {{ m.rsc[id].publication_start|date:"d M Y, H:i" }}.</p>
+-		{% endif %}
++    {% if not m.rsc[id].is_published or m.rsc[id].publication_start|in_future %}
++    <p>{_ The page you are trying to e-mail is not yet published. What do you want to do? _}</p>
++    
++    <p><input type="radio" name="mail_when" value="now" checked="checked" /> {_ Send the mailing right now, but do not include a link back to the website. _}<br />
++        <input type="radio" name="mail_when" value="scheduled" />
++        {% if not m.rsc[id].is_published %}
++        {_ Send the mailing immediately after the "published" checkbox has been checked in the edit page. _}
++        {% else %}
++        {_ Send the mailing automatically after the publication start date of _} {{ m.rsc[id].publication_start|date:"d M Y, H:i" }}.
++        {% endif %}
++    </p>
+ 	{% endif %}
+-	
++
  	{% button text=_"Send mailing" %}
  	{% button text=_"Cancel" action={dialog_close} %}
  </form>
@@ -711,7 +772,7 @@ diff --git a/modules/mod_mailinglist/templates/admin_mailing_status.tpl b/module
 new file mode 100644
 --- /dev/null
 +++ b/modules/mod_mailinglist/templates/admin_mailing_status.tpl
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,33 @@
 +{% extends "admin_base.tpl" %}
 +
 +{% block title %}{_ Mailing status _} &mdash; {{ m.rsc[id].title }}{% endblock %}
@@ -722,6 +783,11 @@ new file mode 100644
 +
 +            <p class="admin-chapeau">{_ mailinglist status page _}:</p>
 +            <h2>{{ m.rsc[id].title }}</h2>
++
++            <div class="notification notice">
++                {_ This page can be sent to different mailing lists. _}
++                <a href="javascript:void(0)" class="do_dialog" data-dialog="title: '{{ _"Help about the mailing page."|escapejs }}', text: '{{ _"This overview allows you to send the current page to a group of recipients, grouped into mailing lists. Choose 'preview mailing' to open a popup window which shows how the mailing will look like when it is sent; choose 'send test mailing' to send it to the predefined list of test e-mail addresses. Choose 'edit' to go back to editing the page.  Each mailinglist is listed in the table below, together with statistics on when it was sent and to how many recipients."|escapejs }}', width: '450px'">{_ Need more help? _}</a>
++            </div>
 +
 +            <div class="clearfix">
 +                <a href="{% url admin_edit_rsc id=id %}" class="button">{_ edit _}</a>
@@ -737,8 +803,7 @@ new file mode 100644
 +
 +            {% wire action={connect signal={log_email} action={update target="mailing-status" template="_admin_mailing_status_overview.tpl" id=id}} %}
 +            {% wire action={connect signal={update_mailinglist_scheduled} action={update target="mailing-status" template="_admin_mailing_status_overview.tpl" id=id}} %}
-+
-+		</div>
++        </div>
 +	</div>
 +{% endblock %}
 diff --git a/modules/mod_mailinglist/templates/admin_mailinglist.tpl b/modules/mod_mailinglist/templates/admin_mailinglist.tpl
