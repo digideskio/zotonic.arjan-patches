@@ -430,13 +430,7 @@ diff --git a/modules/mod_mailinglist/templates/_admin_mailing_status_overview.tp
 new file mode 100644
 --- /dev/null
 +++ b/modules/mod_mailinglist/templates/_admin_mailing_status_overview.tpl
-@@ -0,0 +1,81 @@
-+{% extends "admin_edit_widget_std.tpl" %}
-+
-+{% block widget_title %}{_ Mailinglist status _}{% endblock %}
-+{% block widget_show_minimized %}false{% endblock %}
-+
-+{% block widget_content %}
+@@ -0,0 +1,73 @@
 +
 +{% with m.mailinglist.rsc_stats[id] as rsc_stats %}
 +{% with m.mailinglist.scheduled[id] as scheduled %}
@@ -446,7 +440,7 @@ new file mode 100644
 +{% else %}
 +<p>{{ m.rsc[id].title }} {_ has never been sent yet. _}</p>
 +{% endif %}
-+
++<h3 class="above-list">{_ Mailing lists _}</h3>
 +		<ul class="short-list">
 +			<li class="headers clearfix">
 +				<span class="zp-45">{_ Title _}</span>
@@ -507,11 +501,9 @@ new file mode 100644
 +			</li>
 +		{% endfor %}
 +		</ul>
-+<p>{_ (overview automatically refreshes) _}</p>
 +
 +{% endwith %}
 +{% endwith %}
-+{% endblock %}
 diff --git a/modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tpl b/modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tpl
 --- a/modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tpl
 +++ b/modules/mod_mailinglist/templates/_dialog_mailing_cancel_confirm.tpl
